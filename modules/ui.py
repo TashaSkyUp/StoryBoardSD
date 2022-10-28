@@ -43,6 +43,7 @@ import modules.scripts
 import modules.shared as shared
 import modules.styles
 import modules.textual_inversion.ui
+import modules.story_squad
 from modules import prompt_parser
 from modules.images import save_image
 from modules.sd_hijack import model_hijack
@@ -629,7 +630,11 @@ def create_refresh_button(refresh_component, refresh_method, refreshed_args, ele
 def create_ui(wrap_gradio_gpu_call):
     import modules.img2img
     import modules.txt2img
+    import modules.storyboard
+    from modules.story_squad import StorySquad
 
+    # story_squad_interface = get_story_board_ui(wrap_gradio_gpu_call)
+    story_squad_interface = StorySquad(wrap_gradio_gpu_call).get_story_squad_ui()
 
     with gr.Blocks(analytics_enabled=False) as txt2img_interface:
         txt2img_prompt, roll, txt2img_prompt_style, txt2img_negative_prompt, txt2img_prompt_style2, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, txt2img_paste, token_counter, token_button = create_toprow(is_img2img=False)
@@ -1658,6 +1663,7 @@ Requested path was: {f}
             column.__exit__()
 
     interfaces = [
+        (story_squad_interface, "Story Board", "story_squad"),
         (txt2img_interface, "txt2img", "txt2img"),
         (img2img_interface, "img2img", "img2img"),
         (extras_interface, "Extras", "extras"),
@@ -1888,6 +1894,8 @@ Requested path was: {f}
             apply_field(x, 'value', lambda val: val in x.choices, getattr(x, 'init_field', None))
             apply_field(x, 'visible')
 
+    # Load settings
+    visit(story_squad_interface, loadsave, "story_squad")
     visit(txt2img_interface, loadsave, "txt2img")
     visit(img2img_interface, loadsave, "img2img")
     visit(extras_interface, loadsave, "extras")

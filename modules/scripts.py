@@ -323,6 +323,7 @@ class ScriptRunner:
                         self.scripts[si].args_to = args_to
 
 
+scripts_storyboard = ScriptRunner()
 scripts_txt2img = ScriptRunner()
 scripts_img2img = ScriptRunner()
 
