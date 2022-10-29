@@ -163,18 +163,18 @@ class StorySquad:
 
         words_accum = [[i[0], 0, .000001] for i in get_prompt_words_and_weights_list(params[0].prompt)]
 
-        for n_param, pref in zip(params, preferences):
+        for n_param, pref_for_params in zip(params, preferences):
             words_and_weights = get_prompt_words_and_weights_list(n_param.prompt)
-            for i, pref in zip(range(len(words_and_weights)), preferences):
-                if pref == 1:
+            for i in range(len(words_and_weights)):
+                if pref_for_params == 1:
                     # upvote
                     words_accum[i][1] += words_and_weights[i][1]
                     words_accum[i][2] += 1
-                elif pref == 2:
+                elif pref_for_params == 2:
                     # downvote
                     words_accum[i][1] -= words_and_weights[i][1]
                     words_accum[i][2] += 1
-                elif pref == 3:
+                elif pref_for_params == 3:
                     # select for story board
                     words_accum[i][1] += words_and_weights[i][1]
                     words_accum[i][2] += 1
