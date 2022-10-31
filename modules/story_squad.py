@@ -118,7 +118,7 @@ class StorySquad:
     # import ui
     def __init__(self, wrapper_func):
         from modules.ui import create_toprow, setup_progressbar, create_seed_inputs
-        from  modules.storyboard import storyboard as storyboard
+        from modules.storyboard import storyboard as storyboard
 
         self.create_toprow = create_toprow
         self.setup_progressbar = setup_progressbar
@@ -126,15 +126,13 @@ class StorySquad:
         self.storyboard = storyboard
         self.wrapper_func = wrapper_func
 
-    def update_image_exp_text(self,img_exp_sd_args):
+    def update_image_exp_text(self, img_exp_sd_args):
         print("update_image_exp_text")
         print(img_exp_sd_args)
         o = [str(i) for i in img_exp_sd_args]
         return o
 
-
-
-    def event_update_image_explorer(self,explorer_state):
+    def event_update_image_explorer(self, explorer_state):
         print("event_update_image_explorer")
         print(explorer_state)
         for r in range(3):
@@ -142,7 +140,7 @@ class StorySquad:
                 explorer_state["images"][r][c].value = random_noise_image()
                 explorer_state["buttons"][r][c].label = f"favorite: {r},{c}"
 
-    def simulate_model_response(self,new_params, weight, explorer_state: ImageExplorerState, params_history_in):
+    def simulate_model_response(self, new_params, weight, explorer_state: ImageExplorerState, params_history_in):
         # this simulates what the model does to the state before passing it back
         # randomize the parameters that the model will use
 
@@ -162,7 +160,7 @@ class StorySquad:
 
         return exp_state_out, images_out, p_hist_out
 
-    def simple_param_gen_func(self,param_history):
+    def simple_param_gen_func(self, param_history):
         import random
         print("simple_param_gen_func")
         noise = 0.33
@@ -224,7 +222,7 @@ class StorySquad:
 
         return params_history, *image_results, *params_to_use, *text_out
 
-    def on_downvote(self,cell_params, params_history, *ui_param_state):
+    def on_downvote(self, cell_params, params_history, *ui_param_state):
         print("on_upvote")
         print(cell_params)
         wrapped_func = self.wrapper_func(self.storyboard)
@@ -249,7 +247,7 @@ class StorySquad:
 
         return *params_history, *images, *_img_exp_sd_args, *texts
 
-    def on_generate(self,*ui_param_state):
+    def on_generate(self, *ui_param_state):
         param_list_len = 14
         print("on_generate")
 
@@ -476,6 +474,7 @@ class StorySquad:
                                *ui_gr_comps["image_explorer"]["texts"]
                            ]
                            )
+
             cur_img_idx += 1
             if cur_img_idx >= 9: break
 
