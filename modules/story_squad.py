@@ -125,6 +125,7 @@ class StorySquad:
         self.create_seed_inputs = create_seed_inputs
         self.storyboard = storyboard
         self.wrapper_func = wrapper_func
+        self.storyboard_params = []
 
     def update_image_exp_text(self, img_exp_sd_args):
         print("update_image_exp_text")
@@ -235,17 +236,34 @@ class StorySquad:
 
         return params_history, *image_results, *params_to_use, *text_out
 
-    def on_select(self,cell_params, params_history, *ui_param_state):
-        print("on_select")
+    def on_promote(self, cell_params, params_history, *args):
+        print("\non_promote:")
         print(cell_params)
-        print(params_history)
+        print(f"history: {params_history}")
+
+        storyboard_images = [*args[:3]]
+        ui_param_state = args[3:]
+
+        # append the selected params to the history
         params_history.append((cell_params, 3))
+        # move the params to the storyboard
+        board_empty_idx = len(self.storyboard_params)
+        self.storyboard_params.append(gr.State(cell_params))
+
+        # re-generate the storyboard image based on the new params
+        wrapped_func = self.wrapper_func(self.storyboard)
+        results = wrapped_func(cell_params, 0)
+
+        # update the storyboard image
+        storyboard_images[board_empty_idx] = results[0][0]
+
+        # generate new params and images
         results = self.on_generate(*ui_param_state)
-        images = results[0:9]
+        exp_images = results[0:9]
         _img_exp_sd_args = results[9:18]
         texts = results[18:27]
 
-        return *params_history, *images, *_img_exp_sd_args, *texts
+        return params_history, *exp_images, *_img_exp_sd_args, *storyboard_images, *texts
 
     def on_generate(self, *ui_param_state):
         param_list_len = 14
@@ -263,7 +281,7 @@ class StorySquad:
 
         images_out, params = self.get_random_params_and_images(p_obj, *extra)
         text_out = self.update_image_exp_text(params)
-        return *images_out, *params, *text_out
+        return *images_out, *params, *text_out, []
 
     def get_random_params_and_images(self, p_obj, *extra):
         print("get_random_params_and_images")
@@ -300,11 +318,13 @@ class StorySquad:
 
     def get_story_squad_ui(self):
 
-        img_exp_sd_args = []
+        img_exp_params = []
+        storyboard_params = []
         ui_gr_comps = OrderedDict()
         ui_gr_comps["param_inputs"] = OrderedDict()
         ui_gr_comps["image_explorer"] = OrderedDict()
-        # ui_gr_comps["param_inputs"] = OrderedDict()
+        ui_gr_comps["story_board"] = OrderedDict()
+
         with gr.Blocks() as param_area:
             with gr.Column(variant='panel'):
                 ui_gr_comps["param_inputs"]["steps"] = gr.Slider(minimum=1, maximum=150, step=1, label="Sampling Steps",
@@ -388,6 +408,10 @@ class StorySquad:
                             image1 = gr.Image(label="Image 1")
                             image2 = gr.Image(label="Image 2")
                             image3 = gr.Image(label="Image 3")
+                            ui_gr_comps["story_board"]["image1"] = image1
+                            ui_gr_comps["story_board"]["image2"] = image2
+                            ui_gr_comps["story_board"]["image3"] = image3
+
                 gr.HTML("<hr>")
                 make_gr_label("Parameter Explorer")
 
@@ -452,12 +476,14 @@ class StorySquad:
                           inputs=[
                               img_exp_sd_args[cur_img_idx],
                               params_history,
+                              *ui_gr_comps["story_board"].values(),
                               *ui_gr_comps["param_inputs"]["list_for_generate"] + [gr.State(0)],
                           ],
                           outputs=[
                               params_history,
                               *ui_gr_comps["image_explorer"]["images"],
                               *img_exp_sd_args,
+                              *ui_gr_comps["story_board"].values(),
                               *ui_gr_comps["image_explorer"]["texts"]
                           ]
                           )
