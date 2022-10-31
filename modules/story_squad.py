@@ -215,13 +215,16 @@ class StorySquad:
         print(cell_params)
         wrapped_func = self.wrapper_func(self.storyboard)
         params_history.append((cell_params, 1))
-        params_to_use = self.simple_param_gen_func(params_history)
+        params_for_new_img_exp = self.simple_param_gen_func(params_history)
 
-        results = [wrapped_func(p_obj, 0) for p_obj in params_to_use]
-        image_results = [r[0][0] for r in results]
-        text_out = self.update_image_exp_text(params_to_use)
+        image_results=[]
+        for params in params_for_new_img_exp:
+            result = wrapped_func(params, 0)
+            image_results.append(result[0][0])
+            params.seed = result[1]
 
-        return params_history, *image_results, *params_to_use, *text_out
+        text_out = self.update_image_exp_text(params_for_new_img_exp)
+        return params_history, *image_results, *params_for_new_img_exp, *text_out
 
     def on_downvote(self, cell_params, params_history, *ui_param_state):
         print("on_upvote")
