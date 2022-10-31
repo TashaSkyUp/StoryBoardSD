@@ -83,12 +83,22 @@ class ImageExplorerState:
         self.cells = cells
 
 
-def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
+def sanitize_prompt(prompt):
     prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
-    prompt = prompt.replace("  ", " ")
-    prompt = prompt.replace("  ", " ")
-    prompt = prompt.replace("  ", " ")
+    prompt = prompt.replace("\n", " ")
+    prompt = prompt.replace("\r", " ")
+    prompt = prompt.replace("[", " ").replace("]", " ")
+    prompt = prompt.replace("{", " ").replace("}", " ")
+    # compact blankspace
+    for i in range(10):
+        prompt = prompt.replace("  ", " ")
+
     prompt = prompt.replace("(", "").replace(")", "")
+    return prompt.strip()
+
+
+def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
+    prompt = sanitize_prompt(prompt)
     words = prompt.split(" ")
     o = [i.split(":") for i in words]
     o = [(i[0], 1.0 or float(i[1])) for i in o]
