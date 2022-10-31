@@ -380,21 +380,6 @@ class StorySquad:
             ui_gr_comps["param_inputs"]["prompt"] = prompt
             ui_gr_comps["param_inputs"]["negative_prompt"] = negative_prompt
             params_history = gr.State([])
-            # minimal_dict = {k:v for k,v in ui_gr_comps["param_inputs"].items() if k in CallArgsAsGradioComponents()._gr_keys}
-            # gr_sd_args = CallArgsAsGradioComponents(**minimal_dict)
-            # gr_sd_args = CallArgsAsGradioComponents(**ui_gr_comps["param_inputs"])
-
-            # references to the gradio UI classes that are not held in the state classes above
-            images_n_img_explorer = []
-            buts_in_img_explroer = []
-            text_in_img_explorer = []
-
-            # instances of the state classes
-            # image_exp_state = gr.State(
-            #    ImageExplorerState([ExplorerCellState(gr_sd_args) for _ in range(9)]))
-            # history of parameters voted up or down
-
-            # gr_sd_args = CallArgsAsGradioComponents()
 
             with gr.Column():
                 label = make_gr_label("StoryBoard by Story Squad")
@@ -426,10 +411,11 @@ class StorySquad:
                                     with gr.Column(equal_width=True):
                                         with gr.Group():
                                             self.create_img_exp_group(ui_gr_comps)
-                                            img_exp_sd_args.append(CallArgsAsData())
+                                            img_exp_params.append(CallArgsAsData())
 
-                img_exp_sd_args = [gr.State(args) for args in img_exp_sd_args]
-                self.setup_story_board_events(ui_gr_comps, img_exp_sd_args, submit, params_history)
+                img_exp_params = [gr.State(args) for args in img_exp_params]
+
+                self.setup_story_board_events(ui_gr_comps, img_exp_params, submit, params_history)
                 # submit.click(
                 #    update_image_exp_text,
                 #    inputs =iexp_sd_args_state,
@@ -441,6 +427,7 @@ class StorySquad:
     def setup_story_board_events(self, ui_gr_comps, img_exp_sd_args: List[type(gr.State)], submit,
                                  params_history: List):
 
+        # ui_gr_comps["story_board"]["image1"].
         ui_gr_comps["param_inputs"]["list_for_generate"] = [ui_gr_comps["param_inputs"][k] for k in
                                                             CallArgsAsData()._gr_keys]
 
@@ -448,7 +435,9 @@ class StorySquad:
                      inputs=[*ui_gr_comps["param_inputs"]["list_for_generate"] + [gr.State(0)]],
                      outputs=[*ui_gr_comps["image_explorer"]["images"],
                               *img_exp_sd_args,
-                              *ui_gr_comps["image_explorer"]["texts"]]
+                              *ui_gr_comps["image_explorer"]["texts"],
+                              params_history
+                              ]
                      )
         cur_img_idx = 0
         while True:
@@ -475,7 +464,7 @@ class StorySquad:
                          ]
 
                          )
-            but_use.click(self.on_select,
+            but_use.click(self.on_promote,
                           inputs=[
                               img_exp_sd_args[cur_img_idx],
                               params_history,
