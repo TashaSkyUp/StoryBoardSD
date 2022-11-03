@@ -262,6 +262,8 @@ class StorySquad:
         return params_history, *image_results, *params_to_use, *text_out
 
     def on_promote(self, cell_params, params_history, *args):
+        retool = True
+
         print("\non_promote:")
         print(cell_params)
         print(f"history: {params_history}")
@@ -271,22 +273,39 @@ class StorySquad:
 
         # append the selected params to the history
         params_history.append((cell_params, 3))
-        # move the params to the storyboard
-        board_empty_idx = len(self.storyboard_params)
-        self.storyboard_params.append(gr.State(cell_params))
 
+        # find an empty slot in the storyboard
+        board_empty_idx = 0
+        for i in range(len(self.storyboard_params)):
+            if self.storyboard_params[i].value.prompt is None:
+                board_empty_idx = i
+                break
+        # move the params to the storyboard
+
+        self.storyboard_params[board_empty_idx] = gr.State(cell_params)
         # re-generate the storyboard image based on the new params
+
         wrapped_func = self.wrapper_func(self.storyboard)
         results = wrapped_func(cell_params, 0)
 
         # update the storyboard image
         storyboard_images[board_empty_idx] = results[0][0]
 
-        # generate new params and images
-        results = self.on_generate(*ui_param_state)
-        exp_images = results[0:9]
-        _img_exp_sd_args = results[9:18]
-        texts = results[18:27]
+        if not retool:
+            # generate new params and images
+            results = self.on_generate(*ui_param_state)
+            exp_images = results[0:9]
+            _img_exp_sd_args = results[9:18]
+            texts = results[18:27]
+        else:
+            # generate noise for images
+            exp_images = [random_noise_image() for _ in range(9)]
+            # generate new empty params
+            _img_exp_sd_args = [CallArgsAsData() for _ in range(9)]
+            # set param_history to empty
+            params_history = []
+            # clear the texts
+            texts = [""] * 9
 
         return params_history, *exp_images, *_img_exp_sd_args, *storyboard_images, *texts
 
