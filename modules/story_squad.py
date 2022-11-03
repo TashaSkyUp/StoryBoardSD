@@ -151,6 +151,121 @@ class StorySquad:
         self.wrapper_func = wrapper_func
         self.storyboard_params = []
 
+    def render_storyboard(self, *args, **kwargs) -> List[object]:
+        """
+        >>> StorySquad.render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)],test=True)
+        render_storyboard
+        ()
+        test
+        [prompt: (dog:1.0) (cat:0.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:0.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0]
+        """
+        print("render_storyboard")
+        #storyboard_params = args[:3]
+        img_exp_sd_args = args[3:]
+        print(img_exp_sd_args)
+        storyboard_params = [s.value for s in self.storyboard_params]
+        def get_frame_values_for_prompt_word_weights(prompts, num_frames):  # list[sections[frames[word:weight tuples]]]
+            """
+            >>> while True:
+            ...     sections = get_frame_values_for_prompt_word_weights([CallArgsAsData(prompt= "(dog:1) cat:0"),CallArgsAsData(prompt= "(dog:1) cat:1"),CallArgsAsData(prompt= "(dog:0) cat:1")],4)
+            ...     for section in sections:
+            ...         print(section)
+            ...     break
+            [[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 0.3333333333333333)], [('dog', 1.0), ('cat', 0.6666666666666666)], [('dog', 1.0), ('cat', 1.0)]]
+            [[('dog', 1.0), ('cat', 1.0)], [('dog', 0.6666666666666667), ('cat', 1.0)], [('dog', 0.33333333333333337), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]
+            """
+            # get the weights for each word of each prompt in the prompts list returns a list of lists of tuples
+            words_and_weights_for_prompts = [get_prompt_words_and_weights_list(p) for p in prompts]
+
+            # define the two distinct sections of the storyboard
+            # each section is composed of frames, each frame has different weights for each word (probably) which results
+            # in a unique image for the animation
+            sections = [
+                [words_and_weights_for_prompts[0], words_and_weights_for_prompts[1]],
+                # transition from lattice pt 1 to 2
+                [words_and_weights_for_prompts[1], words_and_weights_for_prompts[2]],
+                # transition from lattice pt 2 to 3
+            ]
+
+            # interpolate the weights linearly for each word in each section for each frame and return the sections
+            sections_frames = []
+            for start, end in sections:
+                word_frame_weights = []
+                for i in range(num_frames):
+                    frame_weights = []
+                    for word_idx, word_at_pos in enumerate(start):
+                        word_start_weight = word_at_pos[1]
+                        word_end_weight = end[word_idx][1]
+                        word_frame_weight = \
+                            word_start_weight + (word_end_weight - word_start_weight) * (i / (num_frames - 1))
+                        frame_weights.append((word_at_pos[0], word_frame_weight))
+                    word_frame_weights.append(frame_weights)
+                sections_frames.append(word_frame_weights)
+
+            return sections_frames
+
+        def get_frame_seed_data(board_params, num_frames) -> [()]:  # List[(seed,subseed,weight)]
+            """
+            interpolation between seeds is done by setting the subseed to the target seed of the next section, and then
+            interpolating the subseed weight from 0  to 1
+            """
+            sections = [
+                [board_params[0], board_params[1]],
+                [board_params[1], board_params[2]],
+            ]
+            all_frames = []
+            for start, end in sections:
+                seed = start.seed
+                subseed = end.seed
+                for i in range(num_frames):
+                    sub_seed_weight = i / (num_frames - 1)
+                    all_frames.append((seed, subseed, sub_seed_weight))
+            return all_frames
+
+        if "test" in kwargs.keys():
+            test = kwargs["test"]
+        else:
+            test = False
+        if test:
+            print("test")
+            num_frames = 2
+        else:
+            num_frames = 120
+
+        prompt_sections = get_frame_values_for_prompt_word_weights(
+            [params.prompt for params in storyboard_params],
+            num_frames=num_frames
+        )
+        #  turn the weights into a list of prompts
+        prompts = []
+        for section in prompt_sections:
+            for frame in section:
+                prompts.append(" ".join([f"({word}:{weight})" for word, weight in frame]))
+
+        seeds = get_frame_seed_data(storyboard_params, num_frames)
+
+        # create a base CallArgsAsData object to use as a template
+        base_params = storyboard_params[0]
+
+        # turn the list of prompts and seeds into a list of CallArgsAsData using the base_params as a template
+        args_for_render = []
+        for prompt, seed in zip(prompts, seeds):
+            base_copy = copy.deepcopy(base_params)
+            base_copy.prompt = prompt
+            base_copy.seed = seed[0]
+            base_copy.subseed = seed[1]
+            base_copy.subseed_strength = seed[2]
+            args_for_render.append(base_copy)
+
+        wrapped_func = self.wrapper_func(self.storyboard)
+        images_to_save=[]
+        if not test:
+            for args in args_for_render:
+                results = wrapped_func(args, 0)
+                images_to_save.append(results[0][0])
+
+        return args_for_render
+
     def update_image_exp_text(self, img_exp_sd_args):
         print("update_image_exp_text")
         print(img_exp_sd_args)
