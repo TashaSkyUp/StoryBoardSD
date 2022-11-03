@@ -142,7 +142,7 @@ class StorySquad:
         from modules.ui import create_toprow, setup_progressbar, create_seed_inputs
         from modules.storyboard import storyboard as storyboard
 
-        self.create_toprow = create_toprow
+        # self.create_toprow = create_toprow
         self.setup_progressbar = setup_progressbar
         self.create_seed_inputs = create_seed_inputs
         self.storyboard = storyboard
@@ -397,11 +397,64 @@ class StorySquad:
 
         with gr.Blocks() as story_squad_interface:
 
-            prompt, roll, txt2img_prompt_style, negative_prompt, txt2img_prompt_style2, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, paste, token_counter, token_button = self.create_toprow(
-                is_img2img=False)
-            ui_gr_comps["param_inputs"]["prompt"] = prompt
-            ui_gr_comps["param_inputs"]["negative_prompt"] = negative_prompt
+            id_part = "storyboard"
             params_history = gr.State([])
+
+            with gr.Row(elem_id="toprow"):
+                with gr.Column(scale=6):
+                    with gr.Row():
+                        with gr.Column(scale=80):
+                            with gr.Row():
+                                ui_gr_comps["param_inputs"]["prompt"] = gr.Textbox(label="Prompt",
+                                                                                   elem_id=f"{id_part}_prompt",
+                                                                                   show_label=False,
+                                                                                   lines=2,
+                                                                                   placeholder="Prompt (press Ctrl+Enter or Alt+Enter to generate)"
+                                                                                   )
+
+                    with gr.Row():
+                        with gr.Column(scale=80):
+                            with gr.Row():
+                                ui_gr_comps["param_inputs"]["negative_prompt"] = gr.Textbox(label="Negative prompt",
+                                                                                            elem_id=f"{id_part}_neg_prompt",
+                                                                                            show_label=False,
+                                                                                            lines=2,
+                                                                                            placeholder="Negative prompt (press Ctrl+Enter or Alt+Enter to generate)"
+                                                                                            )
+
+                with gr.Column(scale=1, elem_id="roll_col", visible=False):
+                    roll = gr.Button(value="R", elem_id="roll", visible=False)
+                    paste = gr.Button(value="P", elem_id="paste", visible=False)
+                    save_style = gr.Button(value="S", elem_id="style_create", visible=False)
+                    prompt_style_apply = gr.Button(value="A", elem_id="style_apply", visible=False)
+
+                    token_counter = gr.HTML(value="<span></span>", elem_id=f"{id_part}_token_counter")
+                    token_button = gr.Button(visible=False, elem_id=f"{id_part}_token_button")
+
+                button_interrogate = None
+                button_deepbooru = None
+
+                with gr.Column(scale=1):
+                    with gr.Row():
+                        submit = gr.Button('Generate', elem_id=f"{id_part}_generate", variant='primary')
+                    with gr.Row():
+                        with gr.Column(scale=1, elem_id="style_pos_col"):
+                            prompt_style = gr.State("None")
+                        with gr.Column(scale=1, elem_id="style_neg_col"):
+                            prompt_style2 = gr.State("None")
+                    with gr.Row():
+                        # create some empty space padding with gr.HTML
+                        gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
+                    with gr.Row():
+                        render = gr.Button('Render', elem_id=f"{id_part}_render", variant='primary')
+                        render.click(
+                            self.render_storyboard,
+                            inputs=[
+                                #*ui_gr_comps["story_board"],
+                                #*ui_gr_comps["param_inputs"].values()
+                            ],
+                            outputs=None
+                        )
 
             with gr.Column():
                 label = make_gr_label("StoryBoard by Story Squad")
