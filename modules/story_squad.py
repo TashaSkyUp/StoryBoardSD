@@ -377,13 +377,8 @@ class StorySquad:
                 ui_gr_comps["param_inputs"]["steps"] = gr.Slider(minimum=1, maximum=150, step=1, label="Sampling Steps",
                                                                  value=20)
 
-                ui_gr_comps["param_inputs"]["sampler_index"] = gr.Radio(label='Sampling method',
-                                                                        elem_id="storyboard_sampling",
-                                                                        choices=[x.name for x in samplers],
-                                                                        value=samplers[0].name,
-                                                                        type="index")
-
-                with gr.Group():
+                ui_gr_comps["param_inputs"]["sampler_index"] = gr.State(9)
+                with gr.Row():
                     ui_gr_comps["param_inputs"]["width"] = gr.Slider(minimum=64, maximum=2048, step=64, label="Width",
                                                                      value=512)
                     ui_gr_comps["param_inputs"]["height"] = gr.Slider(minimum=64, maximum=2048, step=64, label="Height",
