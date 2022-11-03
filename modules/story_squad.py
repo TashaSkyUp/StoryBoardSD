@@ -340,7 +340,7 @@ class StorySquad:
                 prompt_to_randomize = "this is a test prompt that jumped over a lazy dog and then ran away"
 
             words, weights = zip(*get_prompt_words_and_weights_list(prompt_to_randomize))
-
+            weights = [(random.random() - .5) + w for w in weights]
             prompt_to_randomize = " ".join([f"({w}:{weights[i]})" for i, w in enumerate(words)])
 
             return prompt_to_randomize
