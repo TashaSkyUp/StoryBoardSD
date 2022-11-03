@@ -1,15 +1,17 @@
 import gradio as gr
-import numpy as np
-# import random
-# import scripts
-# import shared as shared
-from modules.sd_samplers import samplers
-
-# from modules import storyboard
-from typing import List
-# from dataclasses import dataclass
 import copy
 from collections import OrderedDict
+
+if __name__ != "__main__" and __name__ != "story_squad":
+    import random
+    import doctest
+    import numpy as np
+    from modules.sd_samplers import samplers
+    from typing import List
+    import copy
+    from collections import OrderedDict
+else:
+    print("Running doctests")
 
 
 class CallArgsAsData:
@@ -519,3 +521,14 @@ class StorySquad:
 
         text = gr.Textbox(show_label=False, max_lines=3)
         gr_comps["image_explorer"]["texts"].append(text)
+
+
+if __name__ == '__main__':
+    import doctest
+    import random
+    import gradio as gr
+    import numpy as np
+    from typing import List
+    from collections import OrderedDict
+
+    doctest.run_docstring_examples(StorySquad.render_storyboard, globals(), verbose=True)
