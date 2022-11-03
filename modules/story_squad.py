@@ -488,9 +488,9 @@ class StorySquad:
                             image1 = gr.Image(label="Image 1")
                             image2 = gr.Image(label="Image 2")
                             image3 = gr.Image(label="Image 3")
-                            ui_gr_comps["story_board"]["image1"] = image1
-                            ui_gr_comps["story_board"]["image2"] = image2
-                            ui_gr_comps["story_board"]["image3"] = image3
+                            ui_gr_comps["story_board_image1"] = image1
+                            ui_gr_comps["story_board_image2"] = image2
+                            ui_gr_comps["story_board_image3"] = image3
 
                 gr.HTML("<hr>")
                 make_gr_label("Parameter Explorer")
@@ -560,14 +560,18 @@ class StorySquad:
                           inputs=[
                               img_exp_sd_args[cur_img_idx],
                               params_history,
-                              *ui_gr_comps["story_board"].values(),
+                              ui_gr_comps["story_board_image1"],
+                              ui_gr_comps["story_board_image2"],
+                              ui_gr_comps["story_board_image3"],
                               *ui_gr_comps["param_inputs"]["list_for_generate"] + [gr.State(0)],
                           ],
                           outputs=[
                               params_history,
                               *ui_gr_comps["image_explorer"]["images"],
                               *img_exp_sd_args,
-                              *ui_gr_comps["story_board"].values(),
+                              ui_gr_comps["story_board_image1"],
+                              ui_gr_comps["story_board_image2"],
+                              ui_gr_comps["story_board_image3"],
                               *ui_gr_comps["image_explorer"]["texts"]
                           ]
                           )
