@@ -369,7 +369,8 @@ class StorySquad:
         ui_gr_comps = OrderedDict()
         ui_gr_comps["param_inputs"] = OrderedDict()
         ui_gr_comps["image_explorer"] = OrderedDict()
-        ui_gr_comps["story_board"] = OrderedDict()
+        ui_gr_comps["story_board"] = [gr.State(CallArgsAsData()) for _ in range(3)]
+        self.storyboard_params = ui_gr_comps["story_board"]
 
         with gr.Blocks() as param_area:
             with gr.Column(variant='panel'):
