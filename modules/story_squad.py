@@ -604,16 +604,18 @@ class StorySquad:
         gr_comps["image_explorer"]["images"].append(img)
 
         with gr.Row():
-            but = gr.Button(f"Up", label="Up")
-            gr_comps["image_explorer"]["buttons"].append(but)
+            with gr.Group():
+                but = gr.Button(f"Up", label="Up")
+                gr_comps["image_explorer"]["buttons"].append(but)
 
-            but = gr.Button(f"Use", label="Use")
-            gr_comps["image_explorer"]["buttons"].append(but)
+                but = gr.Button(f"Use", label="Use")
+                gr_comps["image_explorer"]["buttons"].append(but)
 
-            but = gr.Button(f"Down", label="Down")
-            gr_comps["image_explorer"]["buttons"].append(but)
+                but = gr.Button(f"Down", label="Down")
+                gr_comps["image_explorer"]["buttons"].append(but)
 
-        text = gr.Textbox(show_label=False, max_lines=3)
+        text = gr.Textbox(show_label=False, max_lines=3, interactive=False)
+
         gr_comps["image_explorer"]["texts"].append(text)
 
 
