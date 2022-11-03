@@ -100,11 +100,31 @@ def sanitize_prompt(prompt):
 
 
 def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
+    """
+    >>> get_prompt_words_and_weights_list("hello:1 world:.2 how are (you:1.0)")
+    [('hello', 1.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
+    """
     prompt = sanitize_prompt(prompt)
     words = prompt.split(" ")
-    o = [i.split(":") for i in words]
-    o = [(i[0], 1.0 or float(i[1])) for i in o]
-    return o
+    possible_word_weight_pairs = [i.split(":") for i in words]
+    # o = [(i[0], 1.0 or float(i[1])) for i in o]
+    out = []
+    for word_weight_pair in possible_word_weight_pairs:
+        value_count = len(word_weight_pair)  # number of values in the tuple
+        # if the length of the item that is possibly a word weight pair is 1 then it is just a word
+        if value_count == 1:  # when there is no weight assigned to the word
+            w = 1.0
+        # if the length of the item that is possibly a word weight pair is 2 then it is a word and a weight
+        elif value_count == 2:  # then there is a word and probably a weight in the tuple
+            # if the second item in the word weight pair is a float then it is a weight
+            try:
+                w = float(word_weight_pair[1])
+            # if the second item in the word weight pair is not a float then it is not a weight
+            except:
+                raise ValueError("Prompt weights must be numbers")
+
+        out.append((word_weight_pair[0], w))
+    return out
 
 
 def random_noise_image():
