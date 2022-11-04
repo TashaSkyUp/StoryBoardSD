@@ -12,6 +12,7 @@ if __name__ != "__main__" and __name__ != "story_squad":
     from typing import List
     import copy
     from collections import OrderedDict
+    import modules
 else:
     print("Running doctests")
 
@@ -160,10 +161,11 @@ class StorySquad:
         [prompt: (dog:1.0) (cat:0.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:0.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0]
         """
         print("render_storyboard")
-        #storyboard_params = args[:3]
+        # storyboard_params = args[:3]
         img_exp_sd_args = args[3:]
         print(img_exp_sd_args)
         storyboard_params = [s.value for s in self.storyboard_params]
+
         def get_frame_values_for_prompt_word_weights(prompts, num_frames):  # list[sections[frames[word:weight tuples]]]
             """
             >>> while True:
@@ -258,7 +260,7 @@ class StorySquad:
             args_for_render.append(base_copy)
 
         wrapped_func = self.wrapper_func(self.storyboard)
-        images_to_save=[]
+        images_to_save = []
         if not test:
             for args in args_for_render:
                 results = wrapped_func(args, 0)
@@ -356,7 +358,7 @@ class StorySquad:
         params_history.append((cell_params, 1))
         params_for_new_img_exp = self.simple_param_gen_func(params_history)
 
-        image_results=[]
+        image_results = []
         for params in params_for_new_img_exp:
             result = wrapped_func(params, 0)
             image_results.append(result[0][0])
@@ -447,7 +449,7 @@ class StorySquad:
     def get_random_params_and_images(self, p_obj, *extra):
         print("get_random_params_and_images")
         out_image_explorer_params = []
-        out_images = []
+
         wrapped_func = self.wrapper_func(self.storyboard)
 
         def random_pompt_word_weights(prompt_to_randomize):
@@ -460,20 +462,27 @@ class StorySquad:
 
             return prompt_to_randomize
 
+        out_call_args = copy.deepcopy(p_obj)
+        out_call_args.prompt = []
+        out_call_args.batch_size = 9
+
+        out_call_args.seed = []
         for i in range(9):
-            out_call_args = copy.deepcopy(p_obj)
-            out_call_args.prompt = random_pompt_word_weights(p_obj.prompt)
-            out_image_explorer_params.append(out_call_args)
+            tmp = copy.deepcopy(p_obj)
+            tmp_prompt = random_pompt_word_weights(p_obj.prompt)
+            out_call_args.prompt.append(tmp_prompt)
+            out_call_args.seed.append(modules.processing.get_fixed_seed(-1))
+            tmp.prompt = tmp_prompt
+            out_image_explorer_params.append(tmp)
 
-        results = []
-        for params in out_image_explorer_params:
-            result = wrapped_func(params, extra)
-            results.append(result)
-            out_images.append(result[0][0])
-            params.seed = result[1]
+        modules.processing.fix_seed(out_call_args)
+        result = wrapped_func(out_call_args, extra)
 
-        # for i in range (len(out_image_explorer_params)):
-        #    out_image_explorer_params[i].seed = results[i][1]["seed"]
+        out_images = result[0]
+
+        # remove the image grid from the result if it exists
+        if len(out_images) != 9:
+            out_images = out_images[1:]
 
         return out_images, out_image_explorer_params
 
@@ -582,8 +591,8 @@ class StorySquad:
                         render.click(
                             self.render_storyboard,
                             inputs=[
-                                #*ui_gr_comps["story_board"],
-                                #*ui_gr_comps["param_inputs"].values()
+                                # *ui_gr_comps["story_board"],
+                                # *ui_gr_comps["param_inputs"].values()
                             ],
                             outputs=None
                         )

@@ -21,7 +21,7 @@ def storyboard(call_args_data: CallArgsAsData, *args):
         subseed=call_args_data.subseed,
         subseed_strength=call_args_data.subseed_strength,
         sampler_index=call_args_data.sampler_index,
-        batch_size=1,
+        batch_size=call_args_data.batch_size,
         n_iter=1,
         steps=call_args_data.steps,
         cfg_scale=call_args_data.cfg_scale,
