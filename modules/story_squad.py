@@ -5,9 +5,10 @@ import json
 from dataclasses import dataclass
 
 print(__name__)
-from typing import List, Tuple, Any
-import gradio as gr
-
+from typing import List, Any
+keys_for_ui_in_order = ["prompt", "negative_prompt", "steps", "sampler_index", "width", "height", "restore_faces",
+                         "tiling", "batch_count", "batch_size",
+                         "seed", "subseed", "subseed_strength", "cfg_scale"]
 MAX_BATCH_SIZE = 9
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
