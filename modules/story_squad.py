@@ -121,8 +121,8 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
     prompt = sanitize_prompt(prompt)
     words = prompt.split(" ")
     possible_word_weight_pairs = [i.split(":") for i in words]
-    # o = [(i[0], 1.0 or float(i[1])) for i in o]
-    out = []
+    w = 1.0
+    out: list[tuple[Any, float]] = []
     for word_weight_pair in possible_word_weight_pairs:
         value_count = len(word_weight_pair)  # number of values in the tuple
         # if the length of the item that is possibly a word weight pair is 1 then it is just a word
@@ -134,9 +134,10 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
             try:
                 w = float(word_weight_pair[1])
             # if the second item in the word weight pair is not a float then it is not a weight
-            except:
-                raise ValueError("Prompt weights must be numbers")
-
+            except ValueError:
+                raise ValueError(f"Could not convert {word_weight_pair[1]} to a float")
+        else:
+            raise ValueError(f"Could not convert {word_weight_pair} to a word weight pair")
         out.append((word_weight_pair[0], w))
     return out
 
