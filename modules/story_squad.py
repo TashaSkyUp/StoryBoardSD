@@ -1,8 +1,17 @@
 print(__name__)
 from typing import List
 import gradio as gr
-import copy
-from collections import OrderedDict
+
+MAX_BATCH_SIZE = 9
+DEFAULT_HYPER_PARAMS = {
+    "prompt": "",
+    "negative_prompt": "",
+    "steps": 5,
+    "seed": 0,
+    "subseed": 0,
+    "subseed_strength": 0,
+    "cfg_scale": 7,
+}
 
 if __name__ != "__main__" and __name__ != "story_squad":
     import random
@@ -13,6 +22,7 @@ if __name__ != "__main__" and __name__ != "story_squad":
     import copy
     from collections import OrderedDict
     import modules
+    from modules.processing import StableDiffusionProcessingTxt2Img
 else:
     print("Running doctests")
 
