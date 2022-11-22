@@ -155,6 +155,294 @@ def make_gr_label(label):
     return gr.HTML(f"<div class = 'flex ont-bold text-2xl items-center justify-center'> {label} </div>")
 
 
+class SBIHyperParams:
+    """
+    the idea with this class is to provide a useful interface for the user to set,add,index the hyper parameters
+    """
+
+    def __init__(self, negative_prompt, steps, seed, subseed, subseed_strength, cfg_scale, prompt=None, **kwargs):
+        # this just ensures that all the params are lists
+
+        # If prompt was not passed via init, then check kwargs, else raise value error
+        # this is so that the prompt can be passed as a positional argument or a keyword argument
+        # so that the class can be created by unpacking the dictionary of this object
+        if prompt is None:
+            if "_prompt" in kwargs:
+                _prompt = kwargs["_prompt"]
+            else:
+                raise ValueError("prompt is required")
+        else:
+            _prompt = prompt
+
+        self._prompt = self._make_list(_prompt)
+        self.negative_prompt = self._make_list(negative_prompt)
+        self.steps = self._make_list(steps)
+        self.seed = self._make_list(seed)
+        self.subseed = self._make_list(subseed)
+        self.subseed_strength = self._make_list(subseed_strength)
+        self.cfg_scale = self._make_list(cfg_scale)
+
+    def _make_list(self, item: object) -> [object]:
+        if isinstance(item, list):
+            return item
+        else:
+            return [item]
+
+    def __add__(self, other):
+        # this allows this class to be used to append to itself
+        if isinstance(other, SBIHyperParams):
+            return SBIHyperParams(
+                prompt=self._prompt + other._prompt,
+                negative_prompt=self.negative_prompt + other.negative_prompt,
+                steps=self.steps + other.steps,
+                seed=self.seed + other.seed,
+                subseed=self.subseed + other.subseed,
+                subseed_strength=self.subseed_strength + other.subseed_strength,
+                cfg_scale=self.cfg_scale + other.cfg_scale,
+            )
+
+    @property
+    def prompt(self):
+        # if there is only one prompt then return it as a string
+        if len(self._prompt) == 1:
+            return self._prompt[0]
+        else:
+            return self._prompt
+
+    @prompt.setter
+    def prompt(self, value):
+        self._prompt = self._make_list(value)
+    def __json__(self):
+        # serialize the object to a json string
+        return json.dumps(self.__dict__)
+
+    def __str__(self):
+        return self.__json__()
+
+@dataclass
+class SBIRenderParams:
+    width: int
+    height: int
+    restore_faces: bool
+    tiling: bool
+    batch_count: int
+    batch_size: int
+    sampler_index: int
+
+
+class SBMultiSampleArgs:
+    """This is a class to hold and manage a collection of arguments to pass to the model
+     with a batch size equal to the number of samples in the collection
+     The arguments that are passed to the model and can be different per sample are
+     prompt, negative_prompt, steps, seed, subseed, subseed_strength, cfg_scale
+     The arguments that are passed to the model and are the same for all samples are
+     width, height, restore_faces, tiling, batch_count, batch_size, sampler_index
+
+     they have been split into hyper params and render params"""
+
+    def __init__(self, render: SBIRenderParams, hyper: List[SBIHyperParams] = []):
+        # this just ensures that all the params are lists
+        self._hyper = self._make_list(hyper)
+        self._render = render
+        self._length = len(self._hyper)
+        for i in range(self._length):
+            if not isinstance(self._hyper[i], SBIHyperParams):
+                raise TypeError(f'item {i} in hyper is not an instance of SBIHyperParams')
+        self.__post_init__()
+
+    def __post_init__(self):
+        self._length = len(self._hyper)
+
+    @property
+    def combined(self):
+        # combines the contents of each hyper param into a single hyper param
+        # this is useful for when you want to run a single render with multiple hyper params
+        self._combined = copy.deepcopy(self._hyper[0])
+        for i in range(1, self._length):
+            self._combined += self._hyper[i]
+        return SBMultiSampleArgs(render=self._render, hyper=[self._combined])
+
+    def _make_list(self, item):
+
+        if isinstance(item, list):
+            return item
+        else:
+            return [item]
+
+    def __add__(self, other):
+        # if other is a tuple of hyper and render
+        if isinstance(other, SBIHyperParams):
+            # add the params to the lists
+            self._hyper.append(other)
+            # maintain the other attributes
+            self.__post_init__()
+        elif isinstance(other, SBMultiSampleArgs):
+            self._hyper.append(other._hyper)
+            if other._render != None:
+                # if the other render params are not None
+                Warning("Render params passed to add will be ignored")
+            # maintain the other attributes
+            self.__post_init__()
+        else:
+            raise TypeError("Can only add SBIHyperParams or SBMultiSampleArgs")
+
+        return self
+
+    @property
+    def hyper(self):
+        if self._length == 1:
+            # if there is only one hyper param, return it
+            return self._hyper[0]
+        else:
+            return self._hyper
+
+    @hyper.setter
+    def hyper(self, value):
+        self._hyper = self._make_list(value)
+        self.__post_init__()
+
+    @property
+    def render(self):
+        return self._render
+
+    def __iter__(self):
+        my_iter = iter(zip(self._hyper, [self._render] * len(self._hyper)))
+        return my_iter
+
+    def __len__(self):
+        return self._length
+
+    def __getitem__(self, item):
+        tmp = SBMultiSampleArgs(render=self._render, hyper=self._hyper[item])
+        return tmp
+
+
+class SBImageResults:
+    """
+    This class is used to hold the results of a render provided in/by the modules.processing.Processed class
+    """
+
+    def __init__(self, processed: modules.processing.Processed):
+        self.batch_size = processed.batch_size
+        self.processed = processed
+        self.all_images = processed.images
+        self.all_prompts = processed.all_prompts
+        self.all_seeds = processed.all_seeds
+        self.all_subseeds = processed.all_subseeds
+        if len(self.all_subseeds) != len(self.all_seeds):
+            self.all_subseeds = self.all_seeds.copy()
+
+        # these need to be adapted to be changable inter-batch if possible
+        self.all_negative_prompts = [processed.negative_prompt] * processed.batch_size
+        self.all_steps = [processed.steps] * processed.batch_size
+        self.all_subseed_strengths = [processed.subseed_strength] * len(processed.all_seeds)
+        self.all_cfg_scales = [processed.cfg_scale] * len(processed.all_seeds)
+
+        self.batch_size = processed.batch_size
+        self.cfg_scale = processed.cfg_scale
+        self.clip_skip = processed.clip_skip
+        self.height = processed.height
+        self.width = processed.width
+        self.job_timestamp = processed.job_timestamp
+        self.negative_prompt = processed.negative_prompt
+        self.sampler_index = processed.sampler_index
+        self.sampler_name = processed.sampler
+        self.steps = processed.steps
+        self.sb_iparams: SBMultiSampleArgs = self.sb_multi_sample_args_from_sd_results()
+
+        self.img_hyper_params_list = [SBIHyperParams(prompt=prompt,
+                                                     negative_prompt=negative_prompt,
+                                                     steps=steps,
+                                                     seed=seed,
+                                                     subseed=subseed,
+                                                     subseed_strength=subseed_strength,
+                                                     cfg_scale=cfg_scale)
+                                      for prompt,
+                                          negative_prompt,
+                                          steps,
+                                          seed,
+                                          subseed,
+                                          subseed_strength,
+                                          # todo: fix the dimensionality of the ones that are not lists
+                                          cfg_scale in zip(self.all_prompts,
+                                                           self.all_negative_prompts,
+                                                           self.all_steps,
+                                                           self.all_seeds,
+                                                           self.all_subseeds,
+                                                           self.all_subseed_strengths,
+                                                           self.all_cfg_scales)]
+
+        tmp_list_of_st_sq_render_params = [SBIRenderParams(width=self.width,
+                                                           height=self.height,
+                                                           restore_faces=processed.restore_faces,
+                                                           # tiling does not make it to through the conversion to "procesed"
+                                                           # tiling=processed.extra_generation_params[""],
+                                                           tiling=None,
+                                                           # batch count does not make it to through the conversion to "procesed"
+                                                           # batch_count=processed.,batch_count
+                                                           batch_count=None,
+                                                           batch_size=processed.batch_size,
+                                                           sampler_index=processed.sampler_index)
+                                           for _ in range(processed.batch_size)]
+
+        self.all_as_stb_image_params = [SBMultiSampleArgs(hyper=hyper,
+                                                          render=render)
+                                        for hyper, render in zip(self.img_hyper_params_list,
+                                                                 tmp_list_of_st_sq_render_params)]
+
+        # self.results_as_list= list(zip(self.all_images,
+
+    def __iter__(self):
+        o = iter(self.img_hyper_params_list)
+        return o
+
+    def __getitem__(self, item):
+        return self.img_hyper_params_list[item]
+
+    def __add__(self, other):
+        if isinstance(other, SBImageResults):
+            self.img_hyper_params_list += other.img_hyper_params_list
+        else:
+            print("Cannot add SBImageResults to non SBImageResults")
+
+    def sb_multi_sample_args_from_sd_results(self) -> SBMultiSampleArgs:
+        # convert the StableDiffusionProcessingTxt2Img params to SBMultiSampleArgs
+        processed = self.processed
+        if len(processed.all_seeds) == len(processed.all_prompts):
+            # then these results are for multiple seeds and prompts
+            t_hyp = SBIHyperParams(prompt=processed.all_prompts,
+                                   negative_prompt=processed.negative_prompt,
+                                   steps=processed.steps,
+                                   seed=processed.all_seeds,
+                                   subseed=processed.all_subseeds,
+                                   # TODO: check if this is valid for multiple subseed
+                                   #  strengths
+                                   subseed_strength=processed.subseed_strength,
+                                   cfg_scale=processed.cfg_scale)
+        else:
+            t_hyp = SBIHyperParams(prompt=processed.prompt,
+                                   negative_prompt=processed.negative_prompt,
+                                   steps=processed.steps,
+                                   seed=processed.seed,
+                                   subseed=processed.subseed,
+                                   subseed_strength=processed.subseed_strength,
+                                   cfg_scale=processed.cfg_scale)
+
+        t_render = SBIRenderParams(width=processed.width,
+                                   height=processed.height,
+                                   restore_faces=processed.restore_faces,
+                                   # TODO: figure out where to get this from
+                                   tiling=False,
+                                   # TODO: check if the Processed class is just for one batch always
+                                   batch_count=1,
+                                   batch_size=processed.batch_size,
+                                   sampler_index=processed.sampler_index)
+
+        t_params = SBMultiSampleArgs(hyper=t_hyp, render=t_render)
+
+        return t_params
+
+
 class StorySquad:
     # from modules.ui import create_toprow, setup_progressbar, create_seed_inputs
     # import ui
