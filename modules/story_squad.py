@@ -30,79 +30,8 @@ if __name__ != "__main__" and __name__ != "story_squad":
     import modules
     from modules.processing import StableDiffusionProcessingTxt2Img
 else:
+    # TODO: figure out how to load the correct modules when running this file directly for doctests
     print("Running doctests")
-
-
-class CallArgsAsData:
-    def __init__(self, prompt=None,
-                 negative_prompt=None, steps=None, sampler_index=None, width=None,
-                 height=None, restore_faces=None, tiling=None,
-                 batch_count=None,
-                 batch_size=None, seed=None, subseed=None, subseed_strength=None, cfg_scale=None, **kwargs):
-
-        self._gr_keys = ["prompt", "negative_prompt", "steps", "sampler_index", "width", "height", "restore_faces",
-                         "tiling", "batch_count", "batch_size",
-                         "seed", "subseed", "subseed_strength", "cfg_scale"]
-
-        self.prompt = prompt
-        self.negative_prompt = negative_prompt
-        self.steps = steps
-        self.sampler_index = sampler_index
-        self.width = width
-        self.height = height
-        self.restore_faces = restore_faces
-        self.tiling = tiling
-        self.batch_count = batch_count
-        self.batch_size = batch_size
-        self.seed = seed
-        self.subseed = subseed
-        self.subseed_strength = subseed_strength
-        self.cfg_scale = cfg_scale
-
-        self._attributes_as_list = [self.prompt, self.negative_prompt, self.steps, self.sampler_index, self.width,
-                                    self.height, self.restore_faces, self.tiling,
-                                    self.batch_count, self.batch_size, self.seed, self.subseed,
-                                    self.subseed_strength, self.cfg_scale]
-
-    def __str__(self):
-        return ",".join([f"{k}: {v}" for k, v in self.__dict__.items() if not k.startswith("_")])
-
-    def __repr__(self):
-        return self.__str__()
-
-    def __setattr__(self, key, value):
-        if self.__dict__.get("_gr_keys") is not None:
-            if self.__dict__.get("attributes_as_list") is not None:
-                if key in self._gr_keys:
-                    self._attributes_as_list[self._gr_keys.index(key)] = value
-        super().__setattr__(key, value)
-
-
-class CallArgsAsGradioComponents(CallArgsAsData):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # check if all components are gradio components
-        for component in self._attributes_as_list:
-            if not isinstance(component, gr.components.Component):
-                raise ValueError("All components must be gradio components")
-
-
-class ExplorerCellState:
-    # the state of the cell that is not held in the gradio UI classes
-    def __init__(self, m_params: CallArgsAsGradioComponents = None):
-        self.m_params: CallArgsAsGradioComponents = m_params
-        self.rendering: bool = False
-        self.up_count: int
-        self.down_count: int
-        self.idle_secs: int = 0
-        self.passed_to_model_recently: bool = False
-
-
-class ImageExplorerState:
-    # for states the effect the whole explorer
-    def __init__(self, cells: List[ExplorerCellState]):
-        self.cells = cells
-
 
 def sanitize_prompt(prompt):
     prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
@@ -444,20 +373,41 @@ class SBImageResults:
 
 
 class StorySquad:
-    # from modules.ui import create_toprow, setup_progressbar, create_seed_inputs
-    # import ui
-    def __init__(self, wrapper_func):
-        from modules.ui import create_toprow, setup_progressbar, create_seed_inputs
-        from modules.storyboard import storyboard as storyboard
+    def __init__(self):
+        # import some functionality from the provided webui
+        from modules.ui import setup_progressbar, create_seed_inputs
 
-        # self.create_toprow = create_toprow
+        # import custom sampler caller and assign it to be easy to access
+        from modules.storyboard import storyboard_call_multi as storyboardtmp
+        self.storyboard = storyboardtmp
+
+        # assign imported functionality to be easy to access
         self.setup_progressbar = setup_progressbar
         self.create_seed_inputs = create_seed_inputs
-        self.storyboard = storyboard
-        self.wrapper_func = wrapper_func
-        self.storyboard_params = []
 
-    def render_storyboard(self, *args, **kwargs) -> List[object]:
+        # initial state assignment
+        self.all_components = {}
+        self.all_state = {}
+
+        # some functions in the AUTOMATIC1111's code base require things in a specific order
+        # this list will hold the values and be populated when the ui is defined
+        self.ordered_list_of_param_inputs = []
+
+        # populate all_state with the default values
+        # its hard to explain why this is done this way, but it is
+        # basically gradio needs to be informed this way that the objects exist
+        with self.get_story_squad_ui() as wrapped_ui:
+            self.StSqUI = wrapped_ui
+            self.get_story_squad_ui = lambda: self.StSqUI
+
+            self.all_state["history"] = []
+            self.all_state["im_explorer_hparams"] = []
+            self.all_state["story_board"] = []
+
+            self.all_state = gr.State(self.all_state)
+            self.setup_story_board_events()
+
+    def render_storyboard(self, *args):
         """
         >>> StorySquad.render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)],test=True)
         render_storyboard
@@ -466,10 +416,9 @@ class StorySquad:
         [prompt: (dog:1.0) (cat:0.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:0.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0]
         """
         print("render_storyboard")
-        # storyboard_params = args[:3]
-        img_exp_sd_args = args[3:]
-        print(img_exp_sd_args)
-        storyboard_params = [s.value for s in self.storyboard_params]
+
+        all_state = args[0]
+        ui_params = args[1:]
 
         def get_frame_values_for_prompt_word_weights(prompts, num_frames):  # list[sections[frames[word:weight tuples]]]
             """
@@ -484,7 +433,7 @@ class StorySquad:
             # get the weights for each word of each prompt in the prompts list returns a list of lists of tuples
             words_and_weights_for_prompts = [get_prompt_words_and_weights_list(p) for p in prompts]
 
-            # define the two distinct sections of the storyboard
+            # define the two distinct sections of the storyboard_call_multi
             # each section is composed of frames, each frame has different weights for each word (probably) which results
             # in a unique image for the animation
             sections = [
@@ -511,7 +460,7 @@ class StorySquad:
 
             return sections_frames
 
-        def get_frame_seed_data(board_params, num_frames) -> [()]:  # List[(seed,subseed,weight)]
+        def get_frame_seed_data(board_params, _num_frames) -> [()]:  # List[(seed,subseed,weight)]
             """
             interpolation between seeds is done by setting the subseed to the target seed of the next section, and then
             interpolating the subseed weight from 0  to 1
@@ -524,15 +473,37 @@ class StorySquad:
             for start, end in sections:
                 seed = start.seed
                 subseed = end.seed
-                for i in range(num_frames):
-                    sub_seed_weight = i / (num_frames - 1)
+                for i in range(_num_frames):
+                    sub_seed_weight = i / (_num_frames - 1)
                     all_frames.append((seed, subseed, sub_seed_weight))
             return all_frames
 
-        if "test" in kwargs.keys():
-            test = kwargs["test"]
+        storyboard_params = all_state["story_board"]
+        test_render = False
+        if all(map(lambda x: x is None, storyboard_params) or len(storyboard_params) == 0):
+            """Test that is ran when the storyboard_params are not set but the user presses the render button"""
+            test = True
+            test_render = True
+            test_data = [
+                "(dog:1) cat:0",
+                "(dog:1) cat:1",
+                "(dog:0) cat:1",
+            ]
+            storyboard_params = [SBIHyperParams(
+                prompt=prompt,
+                seed=i,
+                negative_prompt="",
+                cfg_scale=7,
+                steps=5,
+                subseed=-1,
+                subseed_strength=0.0,
+            ) for i, prompt in enumerate(test_data)]
+
         else:
             test = False
+            storyboard_params = all_state["story_board"]
+            ui_params = args[1:]
+
         if test:
             print("test")
             num_frames = 2
@@ -543,6 +514,7 @@ class StorySquad:
             [params.prompt for params in storyboard_params],
             num_frames=num_frames
         )
+
         #  turn the weights into a list of prompts
         prompts = []
         for section in prompt_sections:
@@ -551,322 +523,379 @@ class StorySquad:
 
         seeds = get_frame_seed_data(storyboard_params, num_frames)
 
-        # create a base CallArgsAsData object to use as a template
-        base_params = storyboard_params[0]
+        # create a base SBIRenderArgs object
+        # feature: this should allow the user to change the settings for rendering
+        base_SBIMulti = self.get_sb_multi_sample_params_from_ui(ui_params)
 
+        base_Hyper = copy.deepcopy(base_SBIMulti.hyper)
         # turn the list of prompts and seeds into a list of CallArgsAsData using the base_params as a template
-        args_for_render = []
+
         for prompt, seed in zip(prompts, seeds):
-            base_copy = copy.deepcopy(base_params)
-            base_copy.prompt = prompt
-            base_copy.seed = seed[0]
-            base_copy.subseed = seed[1]
-            base_copy.subseed_strength = seed[2]
-            args_for_render.append(base_copy)
+            base_SBIMulti += SBIHyperParams(
+                prompt=prompt,
+                seed=seed[0],
+                subseed=seed[1],
+                subseed_strength=seed[2],
+                negative_prompt=base_Hyper.negative_prompt,
+                steps=base_Hyper.steps,
+                cfg_scale=base_Hyper.cfg_scale,
+            )
 
-        wrapped_func = self.wrapper_func(self.storyboard)
         images_to_save = []
-        if not test:
-            for args in args_for_render:
-                results = wrapped_func(args, 0)
-                images_to_save.append(results[0][0])
 
-        return args_for_render
+        if not test or test_render:
+            for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE):
+                # render the images
+                slice = base_SBIMulti[i:i + MAX_BATCH_SIZE]
+                results = self.storyboard(slice.combined, 0)
+                images_to_save.append(results.all_images)
 
-    def update_image_exp_text(self, img_exp_sd_args):
+        # return base_SBIMulti, images_to_save
+
+    def update_image_exp_text(self, h_params:List[SBIHyperParams]):
         print("update_image_exp_text")
-        print(img_exp_sd_args)
-        o = [str(i) for i in img_exp_sd_args]
+        print(h_params)
+        o = [str(i) for i in h_params]
         return o
 
-    def event_update_image_explorer(self, explorer_state):
-        print("event_update_image_explorer")
-        print(explorer_state)
-        for r in range(3):
-            for c in range(3):
-                explorer_state["images"][r][c].value = random_noise_image()
-                explorer_state["buttons"][r][c].label = f"favorite: {r},{c}"
+    def render_explorer(self, params: SBMultiSampleArgs):
+        # calls self.storyboard with the params
+        # returns a list of images, and a list of params
+        # this is the function that is called by the image explorer
+        # it is called with a SBMultiSampleArgs object
 
-    def simulate_model_response(self, new_params, weight, explorer_state: ImageExplorerState, params_history_in):
-        # this simulates what the model does to the state before passing it back
-        # randomize the parameters that the model will use
+        results: SBImageResults = self.storyboard(params, 0)
+        out_image_exp_params = results.img_hyper_params_list[-9:]
+        return results.all_images[-9:], out_image_exp_params[-9:]
 
-        print("simulate_model_response")
+    class ExplorerModel:
+        """
+        This is a base class for models that are executed to create new SBMultiSampleArgs given input of a history of
+        user perfeneces and the SBIRenderParams to use. Subclasses should implement the generate_params method
+        """
 
-        exp_state_out = explorer_state
-        p_hist_out = params_history_in
-        p_hist_out.append(new_params)
+        # def __init__(self):
+        #    self.sbi_render_params = sbi_render_params
 
-        if not new_params: new_params = "RF"
+        def __call__(self, *args, **kwargs):
+            return self.generate_params(*args, **kwargs)
 
-        images_out = []
+        def generate_params(self, render_params: SBIRenderParams, param_history: [SBIHyperParams]) -> SBMultiSampleArgs:
+            raise NotImplementedError
 
-        for cell in exp_state_out.cells:
-            cell.m_params.seed += 1
-            images_out.append(random_noise_image())
+    class SimpleExplorerModel(ExplorerModel):
+        def __init__(self):
+            super().__init__()
 
-        return exp_state_out, images_out, p_hist_out
+        def generate_params(self, render_params: SBIRenderParams, param_history: [SBIHyperParams]) -> SBMultiSampleArgs:
+            default_hyper_params = SBIHyperParams(
+                prompt="",
+                seed=-1,
+                negative_prompt="",
+                cfg_scale=7,
+                subseed=-1,
+                subseed_strength=0,
+                steps=20,
+            )
+            base_hyper_params = copy.deepcopy(default_hyper_params)
+            base_hyper_params.steps = param_history[-1][0].steps
+            base_hyper_params.cfg_scale = param_history[-1][0].cfg_scale
+            base_hyper_params.negative_prompt = param_history[-1][0].negative_prompt
 
-    def simple_param_gen_func(self, param_history):
-        import random
-        print("simple_param_gen_func")
-        noise = 0.33
+            def simple_param_gen_func(history: [SBIHyperParams]) -> SBIHyperParams:
+                import random
+                # check that history is a valid structure of a list of tubples
+                if not isinstance(history, list):
+                    raise ValueError("history must be a list")
+                if not all([isinstance(h, tuple) for h in history]):
+                    raise ValueError("history must be a list of tuples")
+                if not all([len(h) == 2 for h in history]):
+                    raise ValueError("history must be a list of tuples of length 2")
 
-        unzip = list(zip(*param_history))
-        params = unzip[0]
-        preferences = unzip[1]
+                print("simple_param_gen_func")
+                noise = 0.33
 
-        words_accum = [[i[0], 0, .000001] for i in get_prompt_words_and_weights_list(params[0].prompt)]
+                unzip = list(zip(*history))
+                params = unzip[0]
+                preferences = unzip[1]
 
-        for n_param, pref_for_params in zip(params, preferences):
-            words_and_weights = get_prompt_words_and_weights_list(n_param.prompt)
-            for i in range(len(words_and_weights)):
-                if pref_for_params == 1:
-                    # upvote
-                    words_accum[i][1] += words_and_weights[i][1]
-                    words_accum[i][2] += 1
-                elif pref_for_params == 2:
-                    # downvote
-                    words_accum[i][1] -= words_and_weights[i][1]
-                    words_accum[i][2] += 1
-                elif pref_for_params == 3:
-                    # select for story board
-                    words_accum[i][1] += words_and_weights[i][1]
-                    words_accum[i][2] += 1
-                else:
-                    # no vote
-                    pass
+                words_accum = [[i[0], 0, .000001] for i in get_prompt_words_and_weights_list(params[0].prompt)]
 
-        word_means = [[i[0], i[1] / i[2]] for i in words_accum]
+                for n_param, pref_for_params in zip(params, preferences):
+                    words_and_weights = get_prompt_words_and_weights_list(n_param.prompt)
+                    for i in range(len(words_and_weights)):
+                        if pref_for_params == 1:
+                            # upvote
+                            words_accum[i][1] += words_and_weights[i][1]
+                            words_accum[i][2] += 1
+                        elif pref_for_params == 2:
+                            # downvote
+                            words_accum[i][1] -= words_and_weights[i][1]
+                            words_accum[i][2] += 1
+                        elif pref_for_params == 3:
+                            # select for story board
+                            words_accum[i][1] += words_and_weights[i][1]
+                            words_accum[i][2] += 1
+                        else:
+                            # no vote
+                            pass
 
-        out_params = []
-        for ret_param in range(9):
-            # re weight the words based on the mean and generate a new prompt
-            prompt = ""
-            for word in word_means:
-                _noise = (random.random() * noise) - (noise / 2.0)
-                prompt += f"({word[0]}:{word[1] + _noise}) "
+                word_means = [[i[0], i[1] / i[2]] for i in words_accum]
 
-            cpy = copy.deepcopy(params[0])
-            cpy.prompt = prompt.strip()
+                # get the default params from the first entry in the history
+                out_params = copy.deepcopy(base_hyper_params)
+                # out_params.prompt = []
+                # out_params.seed = []
+                for idx in range(9):
+                    new_params = copy.deepcopy(base_hyper_params)
+                    # re weight the words based on the mean and generate a new prompt
+                    prompt = ""
+                    for word in word_means:
+                        _noise = (random.random() * noise) - (noise / 2.0)
+                        prompt += f"({word[0]}:{word[1] + _noise}) "
+                    new_params.prompt = prompt.strip()
+                    out_params += new_params
 
-            # this is to assure that the user is seeing a variety of seeds / content
-            cpy.seed = -1  # means create a random seed
-            out_params.append(cpy)
+                    # out_params.seed.append(-1)  # means create a random seed
 
-        return out_params
+                return out_params
 
-    def on_upvote(self, cell_params, params_history, *ui_param_state):
-        print("on_upvote")
-        print(cell_params)
-        wrapped_func = self.wrapper_func(self.storyboard)
-        params_history.append((cell_params, 1))
-        params_for_new_img_exp = self.simple_param_gen_func(params_history)
+            hyper_params = simple_param_gen_func(param_history)
+            return SBMultiSampleArgs(render_params, hyper_params)
 
-        image_results = []
-        for params in params_for_new_img_exp:
-            result = wrapped_func(params, 0)
-            image_results.append(result[0][0])
-            params.seed = result[1]
+    def explore(self, render_params, hyper_params_history, explorer_model: ExplorerModel) -> SBMultiSampleArgs:
+        """generates a new set of parameters created by the explorer_model passed in and the history of user preferences
+        in hyper_params_history, then returns the new parameters as a SBMultiSampleArgs that can be used to render a new
+        set of images for the user to explore"""
+        result = explorer_model(render_params, hyper_params_history)
+        return result
 
-        text_out = self.update_image_exp_text(params_for_new_img_exp)
-        return params_history, *image_results, *params_for_new_img_exp, *text_out
+    def record_and_render(self, all_state, idx, vote_category: int, *ui_param_state):
+        # TODO: use this in on_generate
+        #       Going to need to create a new explorer model that uses the ui_param_state to generate random h_params
 
-    def on_downvote(self, cell_params, params_history, *ui_param_state):
-        print("on_upvote")
-        print(cell_params)
-        wrapped_func = self.wrapper_func(self.storyboard)
-        params_history.append((cell_params, 2))
-        params_to_use = self.simple_param_gen_func(params_history)
+        cell_params = all_state["im_explorer_hparams"][idx]
+        all_state["history"].append((cell_params, vote_category))
+        render_params = self.get_sb_multi_sample_params_from_ui(ui_param_state).render
+        render_call_args = self.explore(render_params, all_state["history"], self.SimpleExplorerModel())
+        image_results, all_state["im_explorer_hparams"] = self.render_explorer(render_call_args)
 
-        results = [wrapped_func(p_obj, 0) for p_obj in params_to_use]
-        image_results = [r[0][0] for r in results]
-        text_out = self.update_image_exp_text(params_to_use)
+        return all_state, *image_results, *[i.__dict__ for i in all_state["im_explorer_hparams"]]
 
-        return params_history, *image_results, *params_to_use, *text_out
+    def on_upvote(self, idx, all_state, *ui_param_state):
+        return self.record_and_render(all_state, idx, 1, *ui_param_state)
 
-    def on_promote(self, cell_params, params_history, *args):
-        retool = True
+    def on_downvote(self, idx, all_state, *ui_param_state):
+        return self.record_and_render(all_state, idx, 2, *ui_param_state)
 
-        print("\non_promote:")
-        print(cell_params)
-        print(f"history: {params_history}")
+    def on_promote(self, idx, all_state, *args):
+        # general pattern:
+        # 1. update the params history
+        # 2. move the image to the correct position in the storyboard
+        # 3. update the storyboard image params
+        # 4. generate new params for the image explorer
+        # 5. render the new images
+        # 6. update the image explorer text
+        # 7. return the new params history, new storyboard images, new image explorer images, new image explorer params, new image explorer text
 
-        storyboard_images = [*args[:3]]
-        ui_param_state = args[3:]
+        if "arrange the variables we will be working with":
+            ui_state_comps = args[3:]
+            story_board_images: [] = list(args[:3])
+            cell_params = all_state["im_explorer_hparams"][idx]
+            render_params = self.get_sb_multi_sample_params_from_ui(ui_state_comps).render
+            sb_idx: int = len(all_state["story_board"])
 
-        # append the selected params to the history
-        params_history.append((cell_params, 3))
+        if "set simple params":
+            all_state["history"].append((cell_params, 4))
+            all_state["story_board"].append(cell_params)
 
-        # find an empty slot in the storyboard
-        board_empty_idx = 0
-        for i in range(len(self.storyboard_params)):
-            if self.storyboard_params[i].value.prompt is None:
-                board_empty_idx = i
-                break
-        # move the params to the storyboard
+        if "handle the storyboard first":
+            # render the new storyboard image
+            call_args = self.get_sb_multi_sample_params_from_ui(ui_state_comps)
+            call_args.hyper = cell_params
+            call_args.render.batch_size = 1
+            # re-render the storyboard image
+            sb_result = self.storyboard(call_args, 0)
+            # update story_board_images
+            story_board_images[sb_idx] = sb_result.all_images[0]
 
-        self.storyboard_params[board_empty_idx] = gr.State(cell_params)
-        # re-generate the storyboard image based on the new params
+            # get new SBMultiSampleArgs for the image explorer
+            # render_call_args = self.explore(render_params, all_state["history"], self.SimpleExplorerModel())
 
-        wrapped_func = self.wrapper_func(self.storyboard)
-        results = wrapped_func(cell_params, 0)
+        if "handle the regeneration of the explorer second":
+            tmp = list(self.on_generate(all_state, *ui_state_comps))
+            all_state, tmp = tmp[0], tmp[1:]
+            exp_images, tmp = tmp[:9], tmp[9:]
+            exp_texts, _ = tmp[:9], tmp[9:]
 
-        # update the storyboard image
-        storyboard_images[board_empty_idx] = results[0][0]
+        return all_state, *story_board_images, *exp_images, *exp_texts
 
-        if not retool:
-            # generate new params and images
-            results = self.on_generate(*ui_param_state)
-            exp_images = results[0:9]
-            _img_exp_sd_args = results[9:18]
-            texts = results[18:27]
-        else:
-            # generate noise for images
-            exp_images = [random_noise_image() for _ in range(9)]
-            # generate new empty params
-            _img_exp_sd_args = [CallArgsAsData() for _ in range(9)]
-            # set param_history to empty
-            params_history = []
-            # clear the texts
-            texts = [""] * 9
+    def get_sb_multi_sample_params_from_ui(self, ui_param_state:List[gradio.components.Component]) -> SBMultiSampleArgs:
+        """takes the ui state and returns a SBMultiSampleArgs object that can be used to render images"""
+        sb_image = SBMultiSampleArgs(
+            hyper=[SBIHyperParams(
+                prompt=ui_param_state[0],
+                negative_prompt=ui_param_state[1],
+                steps=ui_param_state[2],
+                seed=ui_param_state[10],
+                subseed=-1,
+                subseed_strength=0,
+                cfg_scale=ui_param_state[13],
 
-        return params_history, *exp_images, *_img_exp_sd_args, *storyboard_images, *texts
+            )],
+            render=SBIRenderParams(
+                width=ui_param_state[4],
+                height=ui_param_state[5],
+                batch_size=9,
+                tiling=ui_param_state[7],
+                batch_count=1,
+                restore_faces=ui_param_state[6],
+                sampler_index=ui_param_state[3],
+            )
+        )
+        return sb_image
 
-    def on_generate(self, *ui_param_state):
-        param_list_len = 14
-        print("on_generate")
+    def on_generate(self, all_state, *ui_param_state):
+        """
+        generates the first series of images for the user to explore, clears the history, and returns the new params
+        :param all_state: the state of the app
+        :param ui_param_state: the state of the ui
+        :return: the new state of the app, the new storyboard images, the new image explorer images, the new image explorer text
+        """
 
-        prompt, negative_prompt, steps, sampler_index, width, height, restore_faces, tiling, \
-        batch_count, batch_size, seed, subseed, subseed_strength, cfg_scale = \
-            ui_param_state[:param_list_len]
+        def get_random_params_and_images(base_params: SBMultiSampleArgs):
+            """
+            generates a set of random parameters and renders the images for the image explorer
+            """
+            print("get_random_params_and_images")
+            out_sb_image_hyper_params = []
 
-        extra = ui_param_state[param_list_len:]
+            def random_pompt_word_weights(prompt_to_randomize: str):
+                # if the prompt is a list not a string fix it
+                if isinstance(prompt_to_randomize, list) and len(prompt_to_randomize) == 1:
+                    prompt_to_randomize = prompt_to_randomize[0]
+                elif isinstance(prompt_to_randomize, list) and len(prompt_to_randomize) == 0:
+                    prompt_to_randomize = ""
 
-        p_obj = CallArgsAsData(prompt, negative_prompt, steps, sampler_index, width, height, restore_faces,
-                               tiling, batch_count, batch_size,
-                               seed, subseed, subseed_strength, cfg_scale)
+                if prompt_to_randomize == "" or prompt_to_randomize is None:
+                    prompt_to_randomize = "this is a test prompt that jumped over a lazy dog and then ran away"
 
-        images_out, params = self.get_random_params_and_images(p_obj, *extra)
+                words, weights = zip(*get_prompt_words_and_weights_list(prompt_to_randomize))
+                weights = [(random.random() - .5) + w for w in weights]
+                prompt_to_randomize = " ".join([f"({w}:{weights[i]})" for i, w in enumerate(words)])
+
+                return prompt_to_randomize
+
+            out_call_args: SBMultiSampleArgs = SBMultiSampleArgs(render=base_params._render, hyper=[])
+
+            for i in range(9):
+                tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
+                tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
+                tmp.prompt = [tmp_prompt]
+                tmp.seed = [modules.processing.get_fixed_seed(-1)]
+
+                out_call_args += tmp
+                out_sb_image_hyper_params.append(tmp)
+
+            sb_image_results: SBImageResults = self.storyboard(out_call_args.combined)
+
+            out_images = sb_image_results.all_images
+
+            # remove the image grid from the result if it exists
+            if len(out_images) != 9:
+                out_images = out_images[1:]
+
+            return out_images, out_sb_image_hyper_params
+
+        sb_msp = self.get_sb_multi_sample_params_from_ui(ui_param_state)
+
+        images_out, params = get_random_params_and_images(sb_msp)
         text_out = self.update_image_exp_text(params)
-        return *images_out, *params, *text_out, []
-
-    def get_random_params_and_images(self, p_obj, *extra):
-        print("get_random_params_and_images")
-        out_image_explorer_params = []
-
-        wrapped_func = self.wrapper_func(self.storyboard)
-
-        def random_pompt_word_weights(prompt_to_randomize):
-            if prompt_to_randomize == "" or prompt_to_randomize is None:
-                prompt_to_randomize = "this is a test prompt that jumped over a lazy dog and then ran away"
-
-            words, weights = zip(*get_prompt_words_and_weights_list(prompt_to_randomize))
-            weights = [(random.random() - .5) + w for w in weights]
-            prompt_to_randomize = " ".join([f"({w}:{weights[i]})" for i, w in enumerate(words)])
-
-            return prompt_to_randomize
-
-        out_call_args = copy.deepcopy(p_obj)
-        out_call_args.prompt = []
-        out_call_args.batch_size = 9
-
-        out_call_args.seed = []
-        for i in range(9):
-            tmp = copy.deepcopy(p_obj)
-            tmp_prompt = random_pompt_word_weights(p_obj.prompt)
-            out_call_args.prompt.append(tmp_prompt)
-            out_call_args.seed.append(modules.processing.get_fixed_seed(-1))
-            tmp.prompt = tmp_prompt
-            out_image_explorer_params.append(tmp)
-
-        modules.processing.fix_seed(out_call_args)
-        result = wrapped_func(out_call_args, extra)
-
-        out_images = result[0]
-
-        # remove the image grid from the result if it exists
-        if len(out_images) != 9:
-            out_images = out_images[1:]
-
-        return out_images, out_image_explorer_params
+        all_state["im_explorer_hparams"] = params
+        return all_state, *images_out, *text_out, *[None] * 3
 
     def get_story_squad_ui(self):
-
-        img_exp_params = []
-        storyboard_params = []
-        ui_gr_comps = OrderedDict()
-        ui_gr_comps["param_inputs"] = OrderedDict()
-        ui_gr_comps["image_explorer"] = OrderedDict()
-        ui_gr_comps["story_board"] = [gr.State(CallArgsAsData()) for _ in range(3)]
-        self.storyboard_params = ui_gr_comps["story_board"]
+        """
+        defines the ui for the story squad app, also sets the initial state of the app
+        """
+        self.all_components["param_inputs"] = {}
 
         with gr.Blocks() as param_area:
             with gr.Column(variant='panel'):
-                ui_gr_comps["param_inputs"]["steps"] = gr.Slider(minimum=1, maximum=150, step=1, label="Sampling Steps",
-                                                                 value=20)
+                self.ordered_list_of_param_inputs.append(gr.Slider(minimum=1, maximum=150, step=1,
+                                                                   label="Sampling Steps",
+                                                                   value=5))
+                self.all_components["param_inputs"]["steps"] = self.ordered_list_of_param_inputs[-1]
 
-                ui_gr_comps["param_inputs"]["sampler_index"] = gr.State(9)
+                self.ordered_list_of_param_inputs.append(gr.State(9))
+                self.all_components["param_inputs"]["sampler_index"] = self.ordered_list_of_param_inputs[-1]
                 with gr.Row():
-                    ui_gr_comps["param_inputs"]["width"] = gr.Slider(minimum=64, maximum=2048, step=64, label="Width",
-                                                                     value=512)
-                    ui_gr_comps["param_inputs"]["height"] = gr.Slider(minimum=64, maximum=2048, step=64, label="Height",
-                                                                      value=512)
+                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=64, maximum=2048, step=64,
+                                                                       label="Width",
+                                                                       value=512))
+                    self.all_components["param_inputs"]["width"] = self.ordered_list_of_param_inputs[-1]
+
+                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=64, maximum=2048, step=64,
+                                                                       label="Height",
+                                                                       value=512))
+                    self.all_components["param_inputs"]["height"] = self.ordered_list_of_param_inputs[-1]
 
                 with gr.Row():
-                    ui_gr_comps["param_inputs"]["restore_faces"] = gr.Checkbox(label='Restore faces', value=False,
-                                                                               visible=True)
-                    ui_gr_comps["param_inputs"]["tiling"] = gr.Checkbox(label='Tiling', value=False)
+                    self.ordered_list_of_param_inputs.append(gr.Checkbox(label='Restore faces', value=False,
+                                                                         visible=True))
+                    self.all_components["param_inputs"]["restore_faces"] = self.ordered_list_of_param_inputs[-1]
+
+                    self.ordered_list_of_param_inputs.append(gr.Checkbox(label='Tiling', value=False))
+                    self.all_components["param_inputs"]["tiling"] = self.ordered_list_of_param_inputs[-1]
 
                 with gr.Row():
-                    ui_gr_comps["param_inputs"]["batch_count"] = gr.Slider(minimum=1, step=1, label='Batch count',
-                                                                           value=1)
-                    ui_gr_comps["param_inputs"]["batch_size"] = gr.Slider(minimum=1, maximum=20, step=1, value=1)
+                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=1, step=1, label='Batch count', value=1))
+                    self.all_components["param_inputs"]["batch_count"] = self.ordered_list_of_param_inputs[-1]
 
-                ui_gr_comps["param_inputs"]["cfg_scale"] = gr.Slider(minimum=1.0, maximum=30.0, step=0.5,
-                                                                     label='CFG Scale', value=7.0)
+                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=1, maximum=20, step=1, value=1))
+                    self.all_components["param_inputs"]["batch_size"] = self.ordered_list_of_param_inputs[-1]
+
+                self.ordered_list_of_param_inputs.append(
+                    gr.Slider(minimum=1.0, maximum=30.0, step=0.5, label='CFG Scale', value=7.0))
+                self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
+
                 # seed, reuse_seed, subseed, reuse_subseed, subseed_strength, seed_resize_from_h, seed_resize_from_w, seed_checkbox
-                ui_gr_comps["param_inputs"]["seed"], \
-                ui_gr_comps["param_inputs"]["reuse_seed"], \
-                ui_gr_comps["param_inputs"]["subseed"], \
-                ui_gr_comps["param_inputs"]["reuse_subseed"], \
-                ui_gr_comps["param_inputs"]["subseed_strength"], \
-                ui_gr_comps["param_inputs"]["seed_resize_from_h"], \
-                ui_gr_comps["param_inputs"]["seed_resize_from_w"], \
-                ui_gr_comps["param_inputs"]["seed_checkbox"] = self.create_seed_inputs()
+                self.ordered_list_of_param_inputs.append(self.create_seed_inputs())
 
-                # import modules.scripts
-
-                # do we even want this? is it easier to remove it than to fix it?
-                # with gr.Group():
-                # ui_gr_comps["param_inputs"]["custom_inputs"] = modules.scripts.scripts_storyboard.setup_ui(is_img2img=False)  #
+                self.all_components["param_inputs"]["seed"], \
+                self.all_components["param_inputs"]["reuse_seed"], \
+                self.all_components["param_inputs"]["subseed"], \
+                self.all_components["param_inputs"]["reuse_subseed"], \
+                self.all_components["param_inputs"]["subseed_strength"], \
+                self.all_components["param_inputs"]["seed_resize_from_h"], \
+                self.all_components["param_inputs"]["seed_resize_from_w"], \
+                self.all_components["param_inputs"]["seed_checkbox"] = self.ordered_list_of_param_inputs[-8:]
 
         with gr.Blocks() as story_squad_interface:
-
-            id_part = "storyboard"
-            params_history = gr.State([])
+            id_part = "storyboard_call_multi"
 
             with gr.Row(elem_id="toprow"):
                 with gr.Column(scale=6):
                     with gr.Row():
                         with gr.Column(scale=80):
                             with gr.Row():
-                                ui_gr_comps["param_inputs"]["prompt"] = gr.Textbox(label="Prompt",
-                                                                                   elem_id=f"{id_part}_prompt",
-                                                                                   show_label=False,
-                                                                                   lines=2,
-                                                                                   placeholder="Prompt (press Ctrl+Enter or Alt+Enter to generate)"
-                                                                                   )
+                                self.all_components["param_inputs"]["prompt"] = gr.Textbox(label="Prompt",
+                                                                                           elem_id=f"{id_part}_prompt",
+                                                                                           show_label=False,
+                                                                                           lines=2,
+                                                                                           placeholder="Prompt (press Ctrl+Enter or Alt+Enter to generate)"
+                                                                                           )
 
                     with gr.Row():
                         with gr.Column(scale=80):
                             with gr.Row():
-                                ui_gr_comps["param_inputs"]["negative_prompt"] = gr.Textbox(label="Negative prompt",
-                                                                                            elem_id=f"{id_part}_neg_prompt",
-                                                                                            show_label=False,
-                                                                                            lines=2,
-                                                                                            placeholder="Negative prompt (press Ctrl+Enter or Alt+Enter to generate)"
-                                                                                            )
+                                self.all_components["param_inputs"]["negative_prompt"] = gr.Textbox(
+                                    label="Negative prompt",
+                                    elem_id=f"{id_part}_neg_prompt",
+                                    show_label=False,
+                                    lines=2,
+                                    placeholder="Negative prompt (press Ctrl+Enter or Alt+Enter to generate)"
+                                )
 
                 with gr.Column(scale=1, elem_id="roll_col", visible=False):
                     roll = gr.Button(value="R", elem_id="roll", visible=False)
@@ -882,7 +911,8 @@ class StorySquad:
 
                 with gr.Column(scale=1):
                     with gr.Row():
-                        submit = gr.Button('Generate', elem_id=f"{id_part}_generate", variant='primary')
+                        self.all_components["submit"] = gr.Button('Generate', elem_id=f"{id_part}_generate",
+                                                                  variant='primary')
                     with gr.Row():
                         with gr.Column(scale=1, elem_id="style_pos_col"):
                             prompt_style = gr.State("None")
@@ -892,15 +922,8 @@ class StorySquad:
                         # create some empty space padding with gr.HTML
                         gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
                     with gr.Row():
-                        render = gr.Button('Render', elem_id=f"{id_part}_render", variant='primary')
-                        render.click(
-                            self.render_storyboard,
-                            inputs=[
-                                # *ui_gr_comps["story_board"],
-                                # *ui_gr_comps["param_inputs"].values()
-                            ],
-                            outputs=None
-                        )
+                        self.all_components["render"] = gr.Button('Render', elem_id=f"{id_part}_render",
+                                                                  variant='primary')
 
             with gr.Column():
                 label = make_gr_label("StoryBoard by Story Squad")
@@ -917,9 +940,10 @@ class StorySquad:
                             image1 = gr.Image(label="Image 1")
                             image2 = gr.Image(label="Image 2")
                             image3 = gr.Image(label="Image 3")
-                            ui_gr_comps["story_board_image1"] = image1
-                            ui_gr_comps["story_board_image2"] = image2
-                            ui_gr_comps["story_board_image3"] = image3
+                            # self.all_components["story_board_image1"] = image1
+                            # self.all_components["story_board_image2"] = image2
+                            # self.all_components["story_board_image3"] = image3
+                            self.all_components["story_board_images"] = [image1, image2, image3]
 
                 gr.HTML("<hr>")
                 make_gr_label("Parameter Explorer")
@@ -931,121 +955,104 @@ class StorySquad:
                                 for c in range(3):
                                     with gr.Column(equal_width=True):
                                         with gr.Group():
-                                            self.create_img_exp_group(ui_gr_comps)
-                                            img_exp_params.append(CallArgsAsData())
-
-                img_exp_params = [gr.State(args) for args in img_exp_params]
-
-                self.setup_story_board_events(ui_gr_comps, img_exp_params, submit, params_history)
-                # submit.click(
-                #    update_image_exp_text,
-                #    inputs =iexp_sd_args_state,
-                #    outputs=text_in_img_explorer
-                # )
+                                            self.create_img_exp_group()
 
         return story_squad_interface
 
-    def setup_story_board_events(self, ui_gr_comps, img_exp_sd_args: List[type(gr.State)], submit,
-                                 params_history: List):
+    def setup_story_board_events(self):
+        """
+        Setup the events for the story board using self.all_components that was initialized in __init__ which called
+        which called this function.
+        """
+        self.all_components["param_inputs"]["list_for_generate"] = \
+            [self.all_components["param_inputs"][k] for k in
+             keys_for_ui_in_order]
+        self.all_components["render"].click(self.render_storyboard,
+                                            inputs=[self.all_state,
+                                                    *self.all_components["param_inputs"]["list_for_generate"]],
+                                            outputs=[self.all_state, *self.all_components["im_explorer"]["images"]]
+                                            )
 
-        # ui_gr_comps["story_board"]["image1"].
-        ui_gr_comps["param_inputs"]["list_for_generate"] = [ui_gr_comps["param_inputs"][k] for k in
-                                                            CallArgsAsData()._gr_keys]
+        self.all_components["submit"].click(self.on_generate,
+                                            inputs=[self.all_state,
+                                                    *self.all_components["param_inputs"]["list_for_generate"]],
+                                            outputs=[self.all_state,
+                                                     *self.all_components["im_explorer"]["images"],
+                                                     *self.all_components["im_explorer"]["texts"],
+                                                     *self.all_components["story_board_images"]
+                                                     ]
+                                            )
 
-        submit.click(self.on_generate,
-                     inputs=[*ui_gr_comps["param_inputs"]["list_for_generate"] + [gr.State(0)]],
-                     outputs=[*ui_gr_comps["image_explorer"]["images"],
-                              *img_exp_sd_args,
-                              *ui_gr_comps["image_explorer"]["texts"],
-                              params_history
-                              ]
-                     )
+        # create the events for the image explorer, buttons, and text boxes
         cur_img_idx = 0
         while True:
-            # cur_img = ui_gr_comps["image_explorer"]["images"][cur_img_idx]
+            # cur_img = self.all_state["im_explorer"]["images"][cur_img_idx]
             but_idx_base = cur_img_idx * 3
-            but_up = [b for b in ui_gr_comps["image_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
+            but_up = [b for b in self.all_components["im_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
                       "up" in b.label.lower()][0]
-            but_use = [b for b in ui_gr_comps["image_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
+            but_use = [b for b in self.all_components["im_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
                        "use" in b.label.lower()][0]
-            but_down = [b for b in ui_gr_comps["image_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
+            but_down = [b for b in self.all_components["im_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
                         "down" in b.label.lower()][0]
 
             but_up.click(self.on_upvote,
-                         inputs=[
-                             img_exp_sd_args[cur_img_idx],
-                             params_history,
-                             *ui_gr_comps["param_inputs"]["list_for_generate"] + [gr.State(0)],
-                         ],
-                         outputs=[
-                             params_history,
-                             *ui_gr_comps["image_explorer"]["images"],
-                             *img_exp_sd_args,
-                             *ui_gr_comps["image_explorer"]["texts"]
-                         ]
-
+                         inputs=[gr.State(cur_img_idx),
+                                 self.all_state,
+                                 *self.all_components["param_inputs"]["list_for_generate"]],
+                         outputs=[self.all_state,
+                                  *self.all_components["im_explorer"]["images"],
+                                  *self.all_components["im_explorer"]["texts"], ]
                          )
             but_use.click(self.on_promote,
-                          inputs=[
-                              img_exp_sd_args[cur_img_idx],
-                              params_history,
-                              ui_gr_comps["story_board_image1"],
-                              ui_gr_comps["story_board_image2"],
-                              ui_gr_comps["story_board_image3"],
-                              *ui_gr_comps["param_inputs"]["list_for_generate"] + [gr.State(0)],
-                          ],
-                          outputs=[
-                              params_history,
-                              *ui_gr_comps["image_explorer"]["images"],
-                              *img_exp_sd_args,
-                              ui_gr_comps["story_board_image1"],
-                              ui_gr_comps["story_board_image2"],
-                              ui_gr_comps["story_board_image3"],
-                              *ui_gr_comps["image_explorer"]["texts"]
-                          ]
+                          inputs=[gr.State(cur_img_idx),
+                                  self.all_state,
+                                  *self.all_components["story_board_images"],
+                                  *self.all_components["param_inputs"]["list_for_generate"],
+                                  ],
+                          outputs=[self.all_state,
+                                   *self.all_components["story_board_images"],
+                                   *self.all_components["im_explorer"]["images"],
+                                   *self.all_components["im_explorer"]["texts"], ]
                           )
+
             but_down.click(self.on_downvote,
-                           inputs=[
-                               img_exp_sd_args[cur_img_idx],
-                               params_history,
-                               *ui_gr_comps["param_inputs"]["list_for_generate"] + [gr.State(0)],
-                           ],
-                           outputs=[
-                               params_history,
-                               *ui_gr_comps["image_explorer"]["images"],
-                               *img_exp_sd_args,
-                               *ui_gr_comps["image_explorer"]["texts"]
-                           ]
+                           inputs=[gr.State(cur_img_idx),
+                                   self.all_state,
+                                   *self.all_components["param_inputs"]["list_for_generate"]],
+                           outputs=[self.all_state,
+                                    *self.all_components["im_explorer"]["images"],
+                                    *self.all_components["im_explorer"]["texts"], ]
                            )
 
             cur_img_idx += 1
             if cur_img_idx >= 9: break
 
-    def create_img_exp_group(self, gr_comps):
-        if not gr_comps["image_explorer"]:
-            gr_comps["image_explorer"] = OrderedDict()
-            gr_comps["image_explorer"]["images"] = []
-            gr_comps["image_explorer"]["buttons"] = []
-            gr_comps["image_explorer"]["texts"] = []
+    def create_img_exp_group(self):
+        gr_comps = self.all_components
+        if "im_explorer" not in gr_comps:
+            gr_comps["im_explorer"] = OrderedDict()
+            gr_comps["im_explorer"]["images"] = []
+            gr_comps["im_explorer"]["buttons"] = []
+            gr_comps["im_explorer"]["texts"] = []
 
         img = gr.Image(value=random_noise_image(), show_label=False,
                        interactive=False)
-        gr_comps["image_explorer"]["images"].append(img)
+        gr_comps["im_explorer"]["images"].append(img)
 
         with gr.Row():
             with gr.Group():
                 but = gr.Button(f"Up", label="Up")
-                gr_comps["image_explorer"]["buttons"].append(but)
+                gr_comps["im_explorer"]["buttons"].append(but)
 
                 but = gr.Button(f"Use", label="Use")
-                gr_comps["image_explorer"]["buttons"].append(but)
+                gr_comps["im_explorer"]["buttons"].append(but)
 
                 but = gr.Button(f"Down", label="Down")
-                gr_comps["image_explorer"]["buttons"].append(but)
+                gr_comps["im_explorer"]["buttons"].append(but)
 
         text = gr.Textbox(show_label=False, max_lines=3, interactive=False)
 
-        gr_comps["image_explorer"]["texts"].append(text)
+        gr_comps["im_explorer"]["texts"].append(text)
 
 
 if __name__ == '__main__':

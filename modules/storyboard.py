@@ -1,49 +1,74 @@
 import modules.scripts
-from modules.processing import StableDiffusionProcessing, Processed, StableDiffusionProcessingTxt2Img, \
-    StableDiffusionProcessingImg2Img, process_images
-from modules.shared import opts, cmd_opts
 import modules.shared as shared
-from modules.story_squad import CallArgsAsData
+from modules.processing import StableDiffusionProcessingTxt2Img, \
+    process_images
+from modules.shared import opts, cmd_opts
+from modules.story_squad import SBMultiSampleArgs, SBImageResults
 
 
-def storyboard(call_args_data: CallArgsAsData, *args):
-    from modules.ui import plaintext_to_html
-    print("Processing...")
+def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleArgs):
+    # convert the story board params to StableDiffusionProcessingTxt2Img params
 
-    p = StableDiffusionProcessingTxt2Img(
+    # get the hyper params
+    prompt = sb_iparams.hyper.prompt
+    negative_prompt = sb_iparams.hyper.negative_prompt
+    steps = sb_iparams.hyper.steps
+    seed = sb_iparams.hyper.seed
+    subseed = sb_iparams.hyper.subseed
+    subseed_strength = sb_iparams.hyper.subseed_strength
+    cfg_scale = sb_iparams.hyper.cfg_scale
+
+    # get the render params
+
+    width = sb_iparams.render.width
+    height = sb_iparams.render.height
+    restore_faces = sb_iparams.render.restore_faces
+    tiling = sb_iparams.render.tiling
+    batch_count = sb_iparams.render.batch_count
+    batch_size = sb_iparams.render.batch_size
+    sampler_index = sb_iparams.render.sampler_index
+
+    # convert the render params to the StableDiffusionProcessingTxt2Img params
+
+    tmp = StableDiffusionProcessingTxt2Img(
         sd_model=shared.sd_model,
         outpath_samples=opts.outdir_samples or opts.outdir_txt2img_samples,
         outpath_grids=opts.outdir_grids or opts.outdir_txt2img_grids,
-        prompt=call_args_data.prompt,
+        prompt=prompt,
         styles=["None", "None"],
-        negative_prompt=call_args_data.negative_prompt,
-        seed=call_args_data.seed,
-        subseed=call_args_data.subseed,
-        subseed_strength=call_args_data.subseed_strength,
-        sampler_index=call_args_data.sampler_index,
-        batch_size=call_args_data.batch_size,
+        negative_prompt=negative_prompt if type(negative_prompt) is not list else negative_prompt[0],
+        seed=seed,
+        subseed=subseed,
+        subseed_strength=subseed_strength, # if type(subseed_strength) is not list else subseed_strength[0],
+        sampler_index=sampler_index if type(sampler_index) is not list else sampler_index[0],
+        batch_size=batch_size if type(batch_size) is not list else batch_size[0],
         n_iter=1,
-        steps=call_args_data.steps,
-        cfg_scale=call_args_data.cfg_scale,
-        width=call_args_data.width,
-        height=call_args_data.height,
-        restore_faces=call_args_data.restore_faces,
-        tiling=call_args_data.tiling
+        steps=steps if type(steps) is not list else steps[0],
+        cfg_scale=cfg_scale if type(cfg_scale) is not list else cfg_scale[0],
+        width=width if type(width) is not list else width[0],
+        height=height if type(height) is not list else height[0],
+        restore_faces=restore_faces if type(restore_faces) is not list else restore_faces[0],
+        tiling=tiling if type(tiling) is not list else tiling[0],
+        seed_enable_extras=True
     )
 
+    return tmp
+
+
+
+
+
+def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImageResults:
+    p = get_sd_txt_2_image_params_from_story_board_params(params)
+
     p.scripts = modules.scripts.scripts_txt2img
-    p.script_args = args
 
-    if cmd_opts.enable_console_prompts:
-        print(f"\nStoryBoard: {call_args_data.prompt}", file=shared.progress_print_out)
+    # turn all -1 seeds to random values ala modules.processing.get_fixed_seed(-1)
+    for i in range(len(p.seed)):
+        if p.seed[i] == -1:
+            p.seed[i] = modules.processing.get_fixed_seed(-1)
 
-    # check if args[0] is a tuple
-    if isinstance(args[0], tuple):
-        args = args[0]
-    processed = modules.scripts.scripts_txt2img.run(p, *args)
-
-    if processed is None:
-        processed = process_images(p)
+    processed = process_images(p)
 
     shared.total_tqdm.clear()
 
@@ -53,5 +78,10 @@ def storyboard(call_args_data: CallArgsAsData, *args):
 
     if opts.do_not_show_images:
         processed.images = []
+    sb_results = SBImageResults(
+        processed=processed,
+        #generation_info_js=generation_info_js,
+        #generation_info_html=plaintext_to_html(generation_info_js)
+    )
 
-    return processed.images, processed.seed, generation_info_js, plaintext_to_html(processed.info)
+    return sb_results
