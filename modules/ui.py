@@ -675,7 +675,7 @@ def create_ui(wrap_gradio_gpu_call):
     from modules.story_squad import StorySquad
 
     # story_squad_interface = get_story_board_ui(wrap_gradio_gpu_call)
-    story_squad_interface = StorySquad(wrap_gradio_gpu_call).get_story_squad_ui()
+    story_squad_interface = StorySquad().get_story_squad_ui()
 
     with gr.Blocks(analytics_enabled=False) as txt2img_interface:
         txt2img_prompt, roll, txt2img_prompt_style, txt2img_negative_prompt, txt2img_prompt_style2, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, txt2img_paste, token_counter, token_button = create_toprow(is_img2img=False)
