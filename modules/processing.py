@@ -328,7 +328,20 @@ def create_random_tensors(shape, seeds, subseeds=None, subseed_strength=0.0, see
         noise = devices.randn(seed, noise_shape)
 
         if subnoise is not None:
-            noise = slerp(subseed_strength, noise, subnoise)
+            # if subseed_strength is a list use the correct engry based on the seed index,
+            # otherwise use single value to calculate the noise also if it is None, then use 0.0
+
+            if type(subseed_strength) == list:
+                subseed_strength_value = subseed_strength[i]
+            elif type(subseed_strength) == float:
+                subseed_strength_value = subseed_strength
+            elif subseed_strength is None:
+                subseed_strength_value = 0.0
+            else:
+                subseed_strength_value = subseed_strength
+
+            noise = slerp(subseed_strength_value, noise, subnoise)
+
 
         if noise_shape != shape:
             x = devices.randn(seed, shape)
