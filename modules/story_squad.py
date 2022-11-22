@@ -1,5 +1,7 @@
+from dataclasses import dataclass, field
+
 print(__name__)
-from typing import List
+from typing import List, Tuple, Any
 import gradio as gr
 
 MAX_BATCH_SIZE = 9
@@ -17,7 +19,6 @@ if __name__ != "__main__" and __name__ != "story_squad":
     import random
     import doctest
     import numpy as np
-    from modules.sd_samplers import samplers
     from typing import List
     import copy
     from collections import OrderedDict
