@@ -407,7 +407,76 @@ class StorySquad:
             self.all_state = gr.State(self.all_state)
             self.setup_story_board_events()
 
-    def render_storyboard(self, *args):
+    def make_mp4(self,filepath, filename, width, height, keep,fps=30):
+        import subprocess
+        import os
+        import glob
+        image_path = os.path.join(filepath, "%05d.png")
+        mp4_path = os.path.join(filepath, f"{str(filename)}.mp4")
+        cmd = [
+
+            'ffmpeg',
+            '-y',
+            '-vcodec', 'png',
+            '-r', str(fps),
+            '-start_number', str(0),
+            '-i', str(image_path),
+            '-c:v', 'libx264',
+            '-vf', 'scale=' + str(width) + ':' + str(height),
+            '-pix_fmt', 'yuv420p',
+            '-crf', '17',
+            '-preset', 'veryfast',
+            str(mp4_path)
+        ]
+        process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            print(stderr)
+            raise RuntimeError(stderr)
+        if keep == False:
+            for ifile in glob.glob(filepath + "/*.png"):
+                os.remove(ifile)
+    def render_storyboard_benchmark(self, *args):
+        from sys import platform
+        import os
+
+        all_state = args[0]
+        ui_params = list(args[1:])
+        steps_to_test = [7,10,14]
+        fps_targets = [4,8,24]
+        out_args=[]
+
+        # iterate through each combination of steps and fps, create new all_state and ui_params for each
+        for steps in steps_to_test:
+            for fps in fps_targets:
+                # create a new all_state and ui_params
+                new_all_state = copy.deepcopy(all_state)
+                new_ui_params = copy.deepcopy(ui_params)
+
+                new_ui_params[2] = steps
+
+                out_args.append((fps,(all_state, *new_ui_params)))
+
+
+        # now create the movies
+        filepath = "E:\\storyboard_benchmark"
+        if not os.path.exists(filepath):
+            os.makedirs(filepath)
+
+        for fps, new_ui_params in out_args:
+            steps=new_ui_params[1][2]
+            res:[PIL.ImageSBImage] = self.render_storyboard(*[120,3*60,*new_ui_params])
+            # save all of the images to the correct folder
+            for i,img in enumerate(res):
+                # pad the filename with zeros
+                png_file_name_in_sequence = f"{str(i).zfill(5)}.png"
+                img.save(os.path.join(filepath, png_file_name_in_sequence))
+
+            mp4_filename = f"steps_{steps}_fps_{fps}"
+            self.make_mp4(filepath, mp4_filename, 512, 512, keep=False, fps=fps)
+
+    def render_storyboard(self,num_frames:int=120,early_stop:float=3, *args):
         """
         >>> StorySquad.render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)],test=True)
         render_storyboard
@@ -415,6 +484,8 @@ class StorySquad:
         test
         [prompt: (dog:1.0) (cat:0.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:0.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0]
         """
+        import time
+        start_time = time.time()
         print("render_storyboard")
 
         all_state = args[0]
@@ -506,9 +577,11 @@ class StorySquad:
 
         if test:
             print("test")
-            num_frames = 2
+            if not num_frames:
+                num_frames = 2
         else:
-            num_frames = 120
+            if not num_frames:
+                num_frames = 120
 
         prompt_sections = get_frame_values_for_prompt_word_weights(
             [params.prompt for params in storyboard_params],
@@ -530,6 +603,7 @@ class StorySquad:
         base_Hyper = copy.deepcopy(base_SBIMulti.hyper)
         # turn the list of prompts and seeds into a list of CallArgsAsData using the base_params as a template
 
+
         for prompt, seed in zip(prompts, seeds):
             base_SBIMulti += SBIHyperParams(
                 prompt=prompt,
@@ -543,14 +617,25 @@ class StorySquad:
 
         images_to_save = []
 
+        batch_times = []
         if not test or test_render:
             for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE):
                 # render the images
                 slice = base_SBIMulti[i:i + MAX_BATCH_SIZE]
                 results = self.storyboard(slice.combined, 0)
-                images_to_save.append(results.all_images)
+                images_to_save = images_to_save+results.all_images[1:]
+                batch_times.append(time.time())
+                print(f"Images {i} to {i+MAX_BATCH_SIZE}, of {len(base_SBIMulti)}")
+                if len(batch_times) > 1:
+                    print(f"batch time: {batch_times[-1] - batch_times[-2]}")
+                if time.time()-start_time> early_stop:
+                    print("early stop")
+                    break
 
-        # return base_SBIMulti, images_to_save
+
+        end_time = time.time()
+        print(f"Time taken: {end_time - start_time}")
+        return images_to_save
 
     def update_image_exp_text(self, h_params:List[SBIHyperParams]):
         print("update_image_exp_text")
@@ -967,9 +1052,10 @@ class StorySquad:
         self.all_components["param_inputs"]["list_for_generate"] = \
             [self.all_components["param_inputs"][k] for k in
              keys_for_ui_in_order]
-        self.all_components["render"].click(self.render_storyboard,
+        self.all_components["render"].click(self.render_storyboard_benchmark,
                                             inputs=[self.all_state,
-                                                    *self.all_components["param_inputs"]["list_for_generate"]],
+                                                    *self.all_components["param_inputs"]["list_for_generate"]
+                                                    ],
                                             outputs=[self.all_state, *self.all_components["im_explorer"]["images"]]
                                             )
 
