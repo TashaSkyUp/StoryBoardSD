@@ -738,7 +738,7 @@ class StorySquad:
                 out_params = copy.deepcopy(base_hyper_params)
                 # out_params.prompt = []
                 # out_params.seed = []
-                for idx in range(9):
+                for idx in range(MAX_BATCH_SIZE):
                     new_params = copy.deepcopy(base_hyper_params)
                     # re weight the words based on the mean and generate a new prompt
                     prompt = ""
