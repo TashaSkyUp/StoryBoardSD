@@ -769,6 +769,7 @@ class StorySquad:
         cell_params = all_state["im_explorer_hparams"][idx]
         all_state["history"].append((cell_params, vote_category))
         render_params = self.get_sb_multi_sample_params_from_ui(ui_param_state).render
+        render_params.batch_size = MAX_IEXP_SIZE
         render_call_args = self.explore(render_params, all_state["history"], self.SimpleExplorerModel())
         image_results, all_state["im_explorer_hparams"] = self.render_explorer(render_call_args)
 
@@ -880,7 +881,7 @@ class StorySquad:
 
             out_call_args: SBMultiSampleArgs = SBMultiSampleArgs(render=base_params._render, hyper=[])
 
-            for i in range(9):
+            for i in range(MAX_IEXP_SIZE):
                 tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
                 tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
                 tmp.prompt = [tmp_prompt]
@@ -894,7 +895,7 @@ class StorySquad:
             out_images = sb_image_results.all_images
 
             # remove the image grid from the result if it exists
-            if len(out_images) != 9:
+            if len(out_images) != MAX_IEXP_SIZE:
                 out_images = out_images[1:]
 
             return out_images, out_sb_image_hyper_params
@@ -944,7 +945,7 @@ class StorySquad:
                     self.ordered_list_of_param_inputs.append(gr.Slider(minimum=1, step=1, label='Batch count', value=1))
                     self.all_components["param_inputs"]["batch_count"] = self.ordered_list_of_param_inputs[-1]
 
-                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=1, maximum=20, step=1, value=1))
+                    self.ordered_list_of_param_inputs.append(gr.State(MAX_IEXP_SIZE))
                     self.all_components["param_inputs"]["batch_size"] = self.ordered_list_of_param_inputs[-1]
 
                 self.ordered_list_of_param_inputs.append(
