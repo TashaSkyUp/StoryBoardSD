@@ -408,6 +408,48 @@ class StorySquad:
             self.all_state = gr.State(self.all_state)
             self.setup_story_board_events()
 
+    @staticmethod
+    def load_last_state():
+        # load the last state
+        with open("last_state.json", "r") as f:
+            last_state = json.load(f)
+        return last_state
+    @staticmethod
+    def dict_to_all_state(new_state: dict,all_state={}):
+        # update the all_state dict with the new values
+        for key, value in new_state.items():
+            all_state[key] = []
+            if key =="history":
+                for t in value:
+                    sbh= SBIHyperParams(**t[0])
+                    vote = t[1]
+                    all_state[key].append((sbh,vote))
+            elif key == "im_explorer_hparams":
+                for data in value:
+                    all_state[key].append(SBIHyperParams(**data))
+            elif key == "story_board":
+                for data in value:
+                    all_state[key].append(SBIHyperParams(**data))
+            else:
+                all_state[key] = value
+        return all_state
+    def all_state_to_dict(self,all_state):
+
+        o = "{"
+        for sk, sv in all_state.items():
+            o = o + f'"{sk}":'
+            o = o + f'['
+            for li in sv:
+                if type(li) == tuple:
+                    o = o + f'{(li[0].__dict__, li[1])},'
+                else:
+                    o = o + f'{li.__dict__},'
+            o = o + "],"
+        o = o + "}"
+        return o
+    def all_state_to_json(self,all_state):
+        return json.dumps(self.all_state_to_dict(all_state))
+
     def make_mp4(self,filepath, filename, width, height, keep,fps=30):
         import subprocess
         import os
