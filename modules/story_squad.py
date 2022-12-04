@@ -9,7 +9,8 @@ from typing import List, Any
 keys_for_ui_in_order = ["prompt", "negative_prompt", "steps", "sampler_index", "width", "height", "restore_faces",
                          "tiling", "batch_count", "batch_size",
                          "seed", "subseed", "subseed_strength", "cfg_scale"]
-MAX_BATCH_SIZE = 9
+MAX_BATCH_SIZE = 18
+MAX_IEXP_SIZE = 9
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
     "negative_prompt": "",
@@ -443,8 +444,10 @@ class StorySquad:
 
         all_state = args[0]
         ui_params = list(args[1:])
-        steps_to_test = [7,10,14]
-        fps_targets = [4,8,24]
+        steps_to_test = [7,10,14,30]
+        fps_targets = [4,8,24,30]
+        num_frames_per_sctn = 480
+        stop_after_mins = 30
         out_args=[]
 
         # iterate through each combination of steps and fps, create new all_state and ui_params for each
@@ -456,7 +459,7 @@ class StorySquad:
 
                 new_ui_params[2] = steps
 
-                out_args.append((fps,(all_state, *new_ui_params)))
+                out_args.append({"steps":steps,"fps":fps,"all_state":all_state, "params":new_ui_params})
 
 
         # now create the movies
@@ -464,11 +467,15 @@ class StorySquad:
         if not os.path.exists(filepath):
             os.makedirs(filepath)
 
-        for fps, new_ui_params in out_args:
-            steps=new_ui_params[1][2]
-            res:[PIL.ImageSBImage] = self.render_storyboard(*[120,3*60,*new_ui_params])
+        images_at_steps={str(i):[] for i in steps_to_test}
+        for combo in out_args:
+            steps, fps, all_state, new_ui_params = combo["steps"], combo["fps"], combo["all_state"], combo["params"]
+            if images_at_steps[str(steps)] == []:
+                images_at_steps[str(steps)]:[PIL.Image] = self.render_storyboard(
+                    *[num_frames_per_sctn,stop_after_mins*60,all_state,*new_ui_params])
+
             # save all of the images to the correct folder
-            for i,img in enumerate(res):
+            for i,img in enumerate(images_at_steps[str(steps)]):
                 # pad the filename with zeros
                 png_file_name_in_sequence = f"{str(i).zfill(5)}.png"
                 img.save(os.path.join(filepath, png_file_name_in_sequence))
@@ -619,7 +626,7 @@ class StorySquad:
 
         batch_times = []
         if not test or test_render:
-            for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE):
+            for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE,128):
                 # render the images
                 slice = base_SBIMulti[i:i + MAX_BATCH_SIZE]
                 results = self.storyboard(slice.combined, 0)
@@ -1009,7 +1016,9 @@ class StorySquad:
                     with gr.Row():
                         self.all_components["render"] = gr.Button('Render', elem_id=f"{id_part}_render",
                                                                   variant='primary')
-
+                    with gr.Row():
+                        self.all_components["benchmark"] = gr.Button('Benchmark', elem_id=f"{id_part}_render",
+                                                          variant='primary')
             with gr.Column():
                 label = make_gr_label("StoryBoard by Story Squad")
                 with gr.Row(scale=1):
