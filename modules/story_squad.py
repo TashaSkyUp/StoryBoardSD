@@ -851,7 +851,7 @@ class StorySquad:
             render=SBIRenderParams(
                 width=ui_param_state[4],
                 height=ui_param_state[5],
-                batch_size=9,
+                batch_size=MAX_BATCH_SIZE,
                 tiling=ui_param_state[7],
                 batch_count=1,
                 restore_faces=ui_param_state[6],
