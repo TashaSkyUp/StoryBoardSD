@@ -522,13 +522,25 @@ class StorySquad:
             ]
 
             # interpolate the weights linearly for each word in each section for each frame and return the sections
+            def get_word_weight_at_percent(section,word_index,percent):
+                """
+                >>> get_word_weight_at_percent([("dog",0.0),("cat",1.0)],0,0.5)
+                0.5
+                """
+                start_weight = section[0][word_index][1]
+                end_weight = section[1][word_index][1]
+                return start_weight + percent * (end_weight - start_weight)
+
             sections_frames = []
-            for start, end in sections:
+            for section in sections:
+                start:tuple(str,float) = section[0]
+                end:tuple(str,float) = section[1]
                 word_frame_weights = []
                 for i in range(num_frames):
                     frame_weights = []
                     for word_idx, word_at_pos in enumerate(start):
-                        word_start_weight = word_at_pos[1]
+                        # format like: ('dog', 0.0)
+                        word_start_weight = start[word_idx][1]
                         word_end_weight = end[word_idx][1]
                         word_frame_weight = \
                             word_start_weight + (word_end_weight - word_start_weight) * (i / (num_frames - 1))
