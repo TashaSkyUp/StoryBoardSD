@@ -1061,7 +1061,7 @@ class StorySquad:
         self.all_components["param_inputs"]["list_for_generate"] = \
             [self.all_components["param_inputs"][k] for k in
              keys_for_ui_in_order]
-        self.all_components["render"].click(self.render_storyboard_benchmark,
+        self.all_components["render"].click(self.render_storyboard,
                                             inputs=[self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]
                                                     ],
@@ -1077,7 +1077,12 @@ class StorySquad:
                                                      *self.all_components["story_board_images"]
                                                      ]
                                             )
-
+        self.all_components["benchmark"].click(self.render_storyboard_benchmark,
+                                            inputs=[self.all_state,
+                                                    *self.all_components["param_inputs"]["list_for_generate"]
+                                                    ],
+                                            outputs=[self.all_state, *self.all_components["im_explorer"]["images"]]
+                                            )
         # create the events for the image explorer, buttons, and text boxes
         cur_img_idx = 0
         while True:
