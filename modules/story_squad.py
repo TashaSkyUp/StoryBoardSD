@@ -680,7 +680,7 @@ class StorySquad:
 
         batch_times = []
         if not test or test_render:
-            for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE,128):
+            for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE):
                 # render the images
                 slice = base_SBIMulti[i:i + MAX_BATCH_SIZE]
                 results = self.storyboard(slice.combined, 0)
@@ -1117,7 +1117,9 @@ class StorySquad:
             [self.all_components["param_inputs"][k] for k in
              keys_for_ui_in_order]
         self.all_components["render"].click(self.render_storyboard,
-                                            inputs=[self.all_state,
+                                            inputs=[gr.State(900*6),
+                                                    gr.State(8*60*60),
+                                                    self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]
                                                     ],
                                             outputs=[self.all_state, *self.all_components["im_explorer"]["images"]]
