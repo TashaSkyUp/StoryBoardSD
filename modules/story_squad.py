@@ -409,12 +409,6 @@ class StorySquad:
             self.setup_story_board_events()
 
     @staticmethod
-    def load_last_state():
-        # load the last state
-        with open("last_state.json", "r") as f:
-            last_state = json.load(f)
-        return last_state
-    @staticmethod
     def dict_to_all_state(new_state: dict,all_state={}):
         # update the all_state dict with the new values
         for key, value in new_state.items():
@@ -449,6 +443,12 @@ class StorySquad:
         return o
     def all_state_to_json(self,all_state):
         return json.dumps(self.all_state_to_dict(all_state))
+    @staticmethod
+    def load_last_state():
+        # load the last state
+        with open("last_state.json", "r") as f:
+            last_state = json.load(f)
+        return StorySquad.dict_to_all_state(last_state)
 
     def make_mp4(self,filepath, filename, width, height, keep,fps=30):
         import subprocess
