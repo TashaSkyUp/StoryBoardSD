@@ -458,20 +458,33 @@ class StorySquad:
             last_state = json.load(f)
         return StorySquad.dict_to_all_state(last_state)
 
-    def make_mp4(self,filepath, filename, width, height, keep,fps=30):
+    def make_mp4_from_images(self, image_list, filename, width, height, keep,fps=30):
+        """Make an mp4 from a list of images, using make_mp4"""
+
+        # save the images to a temp folder
+        temp_folder = "temp"
+        if not os.path.exists(temp_folder):
+            os.mkdir(temp_folder)
+        for i, img in enumerate(image_list):
+            img.save(f"{temp_folder}/temp{i}.png")
+
+        # make the mp4
+        make_mp4(f"{temp_folder}/temp", filename, width, height, keep,fps=fps)
+
+
+    def make_mp4(self, input_path,filepath, filename, width, height, keep,fps=30):
         import subprocess
         import os
         import glob
-        image_path = os.path.join(filepath, "%05d.png")
+        image_input_path = os.path.join(input_path, "%05d.png")
         mp4_path = os.path.join(filepath, f"{str(filename)}.mp4")
         cmd = [
-
             'ffmpeg',
             '-y',
             '-vcodec', 'png',
             '-r', str(fps),
             '-start_number', str(0),
-            '-i', str(image_path),
+            '-i', str(image_input_path),
             '-c:v', 'libx264',
             '-vf', 'scale=' + str(width) + ':' + str(height),
             '-pix_fmt', 'yuv420p',
