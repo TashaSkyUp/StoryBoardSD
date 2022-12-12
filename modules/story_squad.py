@@ -10,6 +10,7 @@ keys_for_ui_in_order = ["prompt", "negative_prompt", "steps", "sampler_index", "
                          "tiling", "batch_count", "batch_size",
                          "seed", "subseed", "subseed_strength", "cfg_scale"]
 MAX_BATCH_SIZE = 18
+# TODO: consider adding a feature to render more results than the Image explorer can show at one time
 MAX_IEXP_SIZE = 9
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
@@ -20,6 +21,13 @@ DEFAULT_HYPER_PARAMS = {
     "subseed_strength": 0,
     "cfg_scale": 7,
 }
+
+@dataclass
+class BenchMarkSettings:
+    steps_to_test = [3, 4, 5, 6]
+    fps_targets = [4, 8, 24, 30]
+    num_frames_per_sctn = 60
+    stop_after_mins = 10
 
 if __name__ != "__main__" and __name__ != "story_squad":
     import random
@@ -486,10 +494,14 @@ class StorySquad:
 
         all_state = args[0]
         ui_params = list(args[1:])
-        steps_to_test = [7,10,14,30]
-        fps_targets = [4,8,24,30]
-        num_frames_per_sctn = 480
-        stop_after_mins = 30
+
+        # get the parameters for the benchmark from the class
+        benchmark_params = BenchMarkSettings()
+        fps_targets = benchmark_params.fps_targets
+        num_frames_per_sctn = benchmark_params.num_frames_per_sctn
+        steps_to_test = benchmark_params.steps_to_test
+        stop_after_mins = benchmark_params.stop_after_mins
+
         out_args=[]
 
         # iterate through each combination of steps and fps, create new all_state and ui_params for each
@@ -505,9 +517,20 @@ class StorySquad:
 
 
         # now create the movies
-        filepath = "E:\\storyboard_benchmark"
-        if not os.path.exists(filepath):
-            os.makedirs(filepath)
+        # get BENCHMARKS folder from the environment
+        benchmark_folder = os.environ.get("STORYBOARD_BENCHMARKS_PATH")
+        # check the format of the string
+        if benchmark_folder[-1] != os.sep:
+            benchmark_folder = benchmark_folder + os.sep
+
+        # verify the folder exists
+        if benchmark_folder == None:
+            print("STORYBOARD_BENCHMARKS_PATH not set")
+            return
+
+        # create the folder if it does not exist
+        if not os.path.exists(benchmark_folder):
+            os.makedirs(benchmark_folder)
 
         images_at_steps={str(i):[] for i in steps_to_test}
         for combo in out_args:
@@ -520,10 +543,10 @@ class StorySquad:
             for i,img in enumerate(images_at_steps[str(steps)]):
                 # pad the filename with zeros
                 png_file_name_in_sequence = f"{str(i).zfill(5)}.png"
-                img.save(os.path.join(filepath, png_file_name_in_sequence))
+                img.save(os.path.join(benchmark_folder, png_file_name_in_sequence))
 
             mp4_filename = f"steps_{steps}_fps_{fps}"
-            self.make_mp4(filepath, mp4_filename, 512, 512, keep=False, fps=fps)
+            self.make_mp4(benchmark_folder, mp4_filename, 512, 512, keep=False, fps=fps)
 
     def render_storyboard(self,num_frames:int=120,early_stop:float=3, *args):
         """
