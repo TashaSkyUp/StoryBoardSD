@@ -1,3 +1,5 @@
+import os
+
 import gradio.components
 import gradio as gr
 import json
@@ -26,8 +28,14 @@ DEFAULT_HYPER_PARAMS = {
 class BenchMarkSettings:
     steps_to_test = [3, 4, 5, 6]
     fps_targets = [4, 8, 24, 30]
-    num_frames_per_sctn = 60
+    num_frames_per_sctn = 5
     stop_after_mins = 10
+
+@dataclass
+class DefaultRender:
+
+    num_frames =(120*.5*15)
+    early_stop_seconds = 60*30
 
 if __name__ != "__main__" and __name__ != "story_squad":
     import random
@@ -458,21 +466,31 @@ class StorySquad:
             last_state = json.load(f)
         return StorySquad.dict_to_all_state(last_state)
 
-    def make_mp4_from_images(self, image_list, filename, width, height, keep,fps=30):
+    def make_mp4_from_images(self, image_list, filepath,filename, width, height, keep,fps=30)->str:
+        import os
         """Make an mp4 from a list of images, using make_mp4"""
 
         # save the images to a temp folder
-        temp_folder = "temp"
-        if not os.path.exists(temp_folder):
-            os.mkdir(temp_folder)
+        temp_folder_path = os.path.join(filepath, "temp")
+        if not os.path.exists(temp_folder_path):
+            try:
+                os.mkdir(temp_folder_path)
+            except OSError:
+                # create the parent folder if it doesn't exist
+                os.mkdir(os.path.dirname(temp_folder_path))
+                os.mkdir(temp_folder_path)
+
+        #str(i).zfill(5)
         for i, img in enumerate(image_list):
-            img.save(f"{temp_folder}/temp{i}.png")
+            filename = os.path.join(temp_folder_path, f"{str(i).zfill(5)}.png")
+            img.save(f"{filename}")
 
         # make the mp4
-        make_mp4(f"{temp_folder}/temp", filename, width, height, keep,fps=fps)
+
+        return self.make_mp4(f"{temp_folder_path}", filepath, filename, width, height, keep,fps=fps)
 
 
-    def make_mp4(self, input_path,filepath, filename, width, height, keep,fps=30):
+    def make_mp4(self, input_path,filepath, filename, width, height, keep,fps=30)->str:
         import subprocess
         import os
         import glob
@@ -501,6 +519,7 @@ class StorySquad:
         if keep == False:
             for ifile in glob.glob(filepath + "/*.png"):
                 os.remove(ifile)
+        return mp4_path
     def render_storyboard_benchmark(self, *args):
         from sys import platform
         import os
@@ -532,6 +551,11 @@ class StorySquad:
         # now create the movies
         # get BENCHMARKS folder from the environment
         benchmark_folder = os.environ.get("STORYBOARD_BENCHMARKS_PATH")
+        #verify that the variable is set
+        if benchmark_folder is None:
+            print("STORYBOARD_BENCHMARKS_PATH environment variable is not set")
+            return
+
         # check the format of the string
         if benchmark_folder[-1] != os.sep:
             benchmark_folder = benchmark_folder + os.sep
@@ -549,7 +573,7 @@ class StorySquad:
         for combo in out_args:
             steps, fps, all_state, new_ui_params = combo["steps"], combo["fps"], combo["all_state"], combo["params"]
             if images_at_steps[str(steps)] == []:
-                images_at_steps[str(steps)]:[PIL.Image] = self.render_storyboard(
+                _,images_at_steps[str(steps)] = self.render_storyboard(
                     *[num_frames_per_sctn,stop_after_mins*60,all_state,*new_ui_params])
 
             # save all of the images to the correct folder
@@ -559,8 +583,8 @@ class StorySquad:
                 img.save(os.path.join(benchmark_folder, png_file_name_in_sequence))
 
             mp4_filename = f"steps_{steps}_fps_{fps}"
-            self.make_mp4(benchmark_folder, mp4_filename, 512, 512, keep=False, fps=fps)
-
+            mp4_full_path = self.make_mp4(benchmark_folder, benchmark_folder,mp4_filename, 512, 512, keep=False, fps=fps)
+        return [all_state,mp4_full_path]
     def render_storyboard(self,num_frames:int=120,early_stop:float=3, *args):
         """
         >>> StorySquad.render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)],test=True)
@@ -732,7 +756,10 @@ class StorySquad:
 
         end_time = time.time()
         print(f"Time taken: {end_time - start_time}")
-        return images_to_save
+        mp4_full_path = self.make_mp4_from_images(images_to_save,
+                                                  os.getenv("STORYBOARD_RENDER_PATH"),
+                                                  "storyboard.mp4",512,512,False,15)
+        return [all_state,mp4_full_path]
 
     def update_image_exp_text(self, h_params:List[SBIHyperParams]):
         print("update_image_exp_text")
@@ -1142,6 +1169,9 @@ class StorySquad:
                                         with gr.Group():
                                             self.create_img_exp_group()
 
+                with gr.Row(scale=1) as movie_result:
+                    self.all_components["story_board_render"] = gr.Video()
+
         return story_squad_interface
 
     def setup_story_board_events(self):
@@ -1153,12 +1183,12 @@ class StorySquad:
             [self.all_components["param_inputs"][k] for k in
              keys_for_ui_in_order]
         self.all_components["render"].click(self.render_storyboard,
-                                            inputs=[gr.State(900*6),
-                                                    gr.State(8*60*60),
+                                            inputs=[gr.State(DefaultRender.num_frames),
+                                                    gr.State(DefaultRender.early_stop_seconds),
                                                     self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]
                                                     ],
-                                            outputs=[self.all_state, *self.all_components["im_explorer"]["images"]]
+                                            outputs=[self.all_state, self.all_components["story_board_render"]]
                                             )
 
         self.all_components["submit"].click(self.on_generate,
@@ -1174,7 +1204,7 @@ class StorySquad:
                                             inputs=[self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]
                                                     ],
-                                            outputs=[self.all_state, *self.all_components["im_explorer"]["images"]]
+                                            outputs=[self.all_state, self.all_components["story_board_render"]]
                                             )
         # create the events for the image explorer, buttons, and text boxes
         cur_img_idx = 0
