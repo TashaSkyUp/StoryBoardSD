@@ -34,8 +34,8 @@ class BenchMarkSettings:
 @dataclass
 class DefaultRender:
 
-    num_frames =(120*.5*15)
-    early_stop_seconds = 60*30
+    num_frames = int(120*.5*15)
+    early_stop_seconds = int(60*30)
 
 if __name__ != "__main__" and __name__ != "story_squad":
     import random
@@ -480,10 +480,10 @@ class StorySquad:
                 os.mkdir(os.path.dirname(temp_folder_path))
                 os.mkdir(temp_folder_path)
 
-        #str(i).zfill(5)
+
         for i, img in enumerate(image_list):
-            filename = os.path.join(temp_folder_path, f"{str(i).zfill(5)}.png")
-            img.save(f"{filename}")
+            i_filename = os.path.join(temp_folder_path, f"{str(i).zfill(5)}.png")
+            img.save(f"{i_filename}")
 
         # make the mp4
 
@@ -517,7 +517,7 @@ class StorySquad:
             print(stderr)
             raise RuntimeError(stderr)
         if keep == False:
-            for ifile in glob.glob(filepath + "/*.png"):
+            for ifile in glob.glob(input_path + "/*.png"):
                 os.remove(ifile)
         return mp4_path
     def render_storyboard_benchmark(self, *args):
