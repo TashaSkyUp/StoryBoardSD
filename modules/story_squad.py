@@ -172,13 +172,13 @@ class SBIHyperParams:
 
 @dataclass
 class SBIRenderParams:
-    width: int
-    height: int
-    restore_faces: bool
-    tiling: bool
-    batch_count: int
-    batch_size: int
-    sampler_index: int
+    width: int = 512
+    height: int = 512
+    restore_faces: bool = False
+    tiling: bool = False
+    batch_count: int = 1
+    batch_size: int = MAX_BATCH_SIZE
+    sampler_index: int = 9
 
 
 class SBMultiSampleArgs:
