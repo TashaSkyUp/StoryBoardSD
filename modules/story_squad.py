@@ -574,22 +574,20 @@ class StorySquad:
         if not os.path.exists(benchmark_folder):
             os.makedirs(benchmark_folder)
 
-        images_at_steps={str(i):[] for i in steps_to_test}
+        mp4_at_steps={str(i):"" for i in steps_to_test}
         for combo in out_args:
             steps, fps, all_state, new_ui_params = combo["steps"], combo["fps"], combo["all_state"], combo["params"]
-            if images_at_steps[str(steps)] == []:
-                _,images_at_steps[str(steps)] = self.render_storyboard(
+            if mp4_at_steps[str(steps)] == "":
+                _,mp4_at_steps[str(steps)] = self.render_storyboard(
                     *[num_frames_per_sctn,stop_after_mins*60,all_state,*new_ui_params])
 
-            # save all of the images to the correct folder
-            for i,img in enumerate(images_at_steps[str(steps)]):
-                # pad the filename with zeros
-                png_file_name_in_sequence = f"{str(i).zfill(5)}.png"
-                img.save(os.path.join(benchmark_folder, png_file_name_in_sequence))
-
             mp4_filename = f"steps_{steps}_fps_{fps}"
-            mp4_full_path = self.make_mp4(benchmark_folder, benchmark_folder,mp4_filename, 512, 512, keep=False, fps=fps)
-        return [all_state,mp4_full_path]
+            #benchmark_folder, benchmark_folder,mp4_filename
+            # copy the mp4 to the benchmark folder
+            mp4_path = os.path.join(benchmark_folder, mp4_filename)
+            # use os.system to copy the file
+            os.system(f"mv {mp4_at_steps[str(steps)]} {mp4_path}.mp4")
+        return [all_state,""]
     def render_storyboard(self,num_frames:int=120,early_stop:float=3, *args):
         """
         >>> StorySquad.render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)],test=True)
