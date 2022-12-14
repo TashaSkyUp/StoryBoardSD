@@ -273,7 +273,7 @@ class SBImageResults:
     This class is used to hold the results of a render provided in/by the modules.processing.Processed class
     """
 
-    def __init__(self, processed: modules.processing.Processed):
+    def __init__(self, processed):
         self.batch_size = processed.batch_size
         self.processed = processed
         self.all_images = processed.images
@@ -599,7 +599,6 @@ class StorySquad:
         [prompt: (dog:1.0) (cat:0.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:0.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0]
         """
         import time
-        start_time = time.time()
         print("render_storyboard")
 
         all_state = args[0]
@@ -729,7 +728,7 @@ class StorySquad:
         base_Hyper = copy.deepcopy(base_SBIMulti.hyper)
         # turn the list of prompts and seeds into a list of CallArgsAsData using the base_params as a template
 
-
+        # populate the storyboard_call_multi with the prompts and seeds
         for prompt, seed in zip(prompts, seeds):
             base_SBIMulti += SBIHyperParams(
                 prompt=prompt,
@@ -741,30 +740,97 @@ class StorySquad:
                 cfg_scale=base_Hyper.cfg_scale,
             )
 
-        images_to_save = []
 
-        batch_times = []
         if not test or test_render:
-            for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE):
-                # render the images
-                slice = base_SBIMulti[i:i + MAX_BATCH_SIZE]
-                results = self.storyboard(slice.combined, 0)
-                images_to_save = images_to_save+results.all_images[1:]
-                batch_times.append(time.time())
-                print(f"Images {i} to {i+MAX_BATCH_SIZE}, of {len(base_SBIMulti)}")
-                if len(batch_times) > 1:
-                    print(f"batch time: {batch_times[-1] - batch_times[-2]}")
-                if time.time()-start_time> early_stop:
-                    print("early stop")
-                    break
-
+            images_to_save, start_time = self.batched_renderer(base_SBIMulti, early_stop)
 
         end_time = time.time()
         print(f"Time taken: {end_time - start_time}")
         mp4_full_path = self.make_mp4_from_images(images_to_save,
                                                   os.getenv("STORYBOARD_RENDER_PATH"),
-                                                  "storyboard.mp4",512,512,False,15)
+                                                  "storyboard.mp4",512,512,False,fps=DefaultRender.fps)
         return [all_state,mp4_full_path]
+
+    def batched_renderer(self, base_SBIMulti, early_stop):
+        images_to_save = []
+        batch_times = []
+        start_time = time.time()
+        for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE):
+            # actually render the images
+            slice = base_SBIMulti[i:i + MAX_BATCH_SIZE]
+            results = self.storyboard(slice.combined, 0)
+            images_to_save = images_to_save + results.all_images[1:]
+            batch_times.append(time.time())
+            print(f"Images {i} to {i + MAX_BATCH_SIZE}, of {len(base_SBIMulti)}")
+            if len(batch_times) > 1:
+                print(f"batch time: {batch_times[-1] - batch_times[-2]}")
+            if time.time() - start_time > early_stop:
+                print("early stop")
+                break
+        return images_to_save, start_time
+
+    @staticmethod
+    def batched_selective_renderer(SBIMultiArgs, early_stop,SBIMA_render_func):
+        """
+        >>> if True:
+        ...   import PIL
+        ...   import numpy as np
+        ...   f = SBMultiSampleArgs(render=SBIRenderParams(),hyper=SBIHyperParams(**DEFAULT_HYPER_PARAMS))
+        ...   results = lambda :None;results.all_images=[np.random.rand(512, 512, 3) for _ in range(MAX_BATCH_SIZE+1)]
+        ...   for _ in range(100):
+        ...     f += SBIHyperParams(**DEFAULT_HYPER_PARAMS)
+        ...   StorySquad.batched_selective_renderer(SBIMultiArgs=f, early_stop=10,SBIMA_render_func=lambda x,y:results )
+
+        """
+        import time
+        import numpy as np
+        images_to_save = {}
+        batch_times = []
+        start_time = time.time()
+        # start by rendering only half of the frames
+        odd_SBIM = SBIMultiArgs[::2]
+        even_SBIM = SBIMultiArgs[1::2]
+        for i in range(0, len(odd_SBIM), MAX_BATCH_SIZE):
+            # actually render the images
+            max_idx = min(i + MAX_BATCH_SIZE, len(odd_SBIM))
+            slice = odd_SBIM[i:max_idx]
+            results = SBIMA_render_func(slice.combined, 0)
+
+            t_images =  results.all_images[1:]
+            t_images= t_images[:len(slice)]
+            idxs = list(range(i, max_idx))
+            position_results = dict(zip(idxs, t_images))
+            images_to_save.update(position_results)
+
+            batch_times.append(time.time())
+
+            if time.time() - start_time > early_stop:
+                print("early stop")
+                break
+        # now render the other half of the frames if the difference between the two is greater than a threshold
+        threshold = 0.1
+        list_idx_sbmsi = []
+        for i in range (0, len(even_SBIM)):
+            max_idx = min(i + MAX_BATCH_SIZE, len(even_SBIM))
+            prev_idx = i
+            next_idx = i + 1
+            prev_img = images_to_save[prev_idx]
+            next_img = images_to_save[next_idx]
+            diff = np.abs(prev_img - next_img).mean()
+            if diff > threshold:
+                list_idx_sbmsi.append((i, SBIMultiArgs[i]))
+
+        for i in range(0, len(list_idx_sbmsi), MAX_BATCH_SIZE):
+            for ii in range(i, i + MAX_BATCH_SIZE):
+                if ii < len(list_idx_sbmsi):
+                    idx, sbmsi = list_idx_sbmsi[ii]
+                    images_to_save[idx] = SBIMA_render_func(sbmsi, 0).all_images[1]
+
+        for i, sbmsi in list_idx_sbmsi:
+            results = SBIMA_render_func(sbmsi.combined, 0)
+            images_to_save[i+1] = results.all_images[1]
+
+        return images_to_save, start_time
 
     def update_image_exp_text(self, h_params:List[SBIHyperParams]):
         print("update_image_exp_text")
