@@ -48,6 +48,7 @@ if __name__ != "__main__" and __name__ != "story_squad":
     from modules.processing import StableDiffusionProcessingTxt2Img
 else:
     # TODO: figure out how to load the correct modules when running this file directly for doctests
+    import copy
     print("Running doctests")
 
 def sanitize_prompt(prompt):
