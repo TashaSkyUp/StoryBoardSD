@@ -128,6 +128,10 @@ class SBIHyperParams:
         self.subseed_strength = self._make_list(subseed_strength)
         self.cfg_scale = self._make_list(cfg_scale)
 
+    def __getitem__(self, item):
+        return SBIHyperParams(prompt = self._prompt[item], negative_prompt=self.negative_prompt[item],
+                              steps=self.steps[item], seed=self.seed[item], subseed=self.subseed[item],
+                              subseed_strength=self.subseed_strength[item], cfg_scale=self.cfg_scale[item])
     def _make_list(self, item: object) -> [object]:
         if isinstance(item, list):
             return item
@@ -797,21 +801,25 @@ class StorySquad:
             super().__init__()
 
         def generate_params(self, render_params: SBIRenderParams, param_history: [SBIHyperParams]) -> SBMultiSampleArgs:
-            default_hyper_params = SBIHyperParams(
-                prompt="",
-                seed=-1,
-                negative_prompt="",
-                cfg_scale=7,
-                subseed=-1,
-                subseed_strength=0,
-                steps=20,
-            )
-            base_hyper_params = copy.deepcopy(default_hyper_params)
-            base_hyper_params.steps = param_history[-1][0].steps
-            base_hyper_params.cfg_scale = param_history[-1][0].cfg_scale
-            base_hyper_params.negative_prompt = param_history[-1][0].negative_prompt
+            #default_hyper_params = SBIHyperParams(
+            #    prompt="",
+            #    seed=-1,
+            #    negative_prompt="",
+            #    cfg_scale=7,
+            #    subseed=-1,
+            #    subseed_strength=0,
+            #    steps=20,
+            #)
+            #base_hyper_params = copy.deepcopy(DEFAULT_HYPER_PARAMS)
+            #base_hyper_params.steps = param_history[-1][0].steps
+            #base_hyper_params.cfg_scale = param_history[-1][0].cfg_scale
+            #base_hyper_params.negative_prompt = param_history[-1][0].negative_prompt
+            base_hyper_params = copy.deepcopy(param_history[-1][0])
+            base_hyper_params.seed=[-1]
+            base_hyper_params.subseed=[-1]
+            base_hyper_params.subseed_strength=[0]
 
-            def simple_param_gen_func(history: [SBIHyperParams]) -> SBIHyperParams:
+            def simple_param_gen_func(history: [SBIHyperParams],num:int) -> SBIHyperParams:
                 import random
                 # check that history is a valid structure of a list of tubples
                 if not isinstance(history, list):
@@ -851,11 +859,11 @@ class StorySquad:
 
                 word_means = [[i[0], i[1] / i[2]] for i in words_accum]
 
-                # get the default params from the first entry in the history
+
                 out_params = copy.deepcopy(base_hyper_params)
                 # out_params.prompt = []
                 # out_params.seed = []
-                for idx in range(MAX_BATCH_SIZE):
+                for idx in range(num):
                     new_params = copy.deepcopy(base_hyper_params)
                     # re weight the words based on the mean and generate a new prompt
                     prompt = ""
@@ -865,11 +873,11 @@ class StorySquad:
                     new_params.prompt = prompt.strip()
                     out_params += new_params
 
-                    # out_params.seed.append(-1)  # means create a random seed
+
 
                 return out_params
 
-            hyper_params = simple_param_gen_func(param_history)
+            hyper_params = simple_param_gen_func(param_history,num=9)[1:]
             return SBMultiSampleArgs(render_params, hyper_params)
 
     def explore(self, render_params, hyper_params_history, explorer_model: ExplorerModel) -> SBMultiSampleArgs:
