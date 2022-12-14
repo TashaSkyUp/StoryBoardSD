@@ -33,8 +33,8 @@ class BenchMarkSettings:
 
 @dataclass
 class DefaultRender:
-
-    num_frames = int(120*.5*15)
+    fps:int= 12
+    num_frames = int(120*.5*fps)
     early_stop_seconds = int(60*30)
 
 if __name__ != "__main__" and __name__ != "story_squad":
@@ -491,7 +491,7 @@ class StorySquad:
 
         # make the mp4
 
-        return self.make_mp4(f"{temp_folder_path}", filepath, filename, width, height, keep,fps=fps)
+        return self.make_mp4(f"{temp_folder_path}", filepath, filename, width, height, keep,fps=DefaultRender.fps)
 
 
     def make_mp4(self, input_path,filepath, filename, width, height, keep,fps=30)->str:
