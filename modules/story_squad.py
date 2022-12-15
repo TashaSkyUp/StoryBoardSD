@@ -52,7 +52,7 @@ class BenchMarkSettings:
 
 @dataclass
 class DefaultRender:
-    fps:int= 1
+    fps:int= 10
     minutes:int = 2
     seconds:int = minutes * 60
     sections:int = 2
