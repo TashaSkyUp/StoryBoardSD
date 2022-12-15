@@ -52,11 +52,11 @@ class BenchMarkSettings:
 
 @dataclass
 class DefaultRender:
-    fps:int= 12
+    fps:int= 1
     minutes:int = 2
     seconds:int = minutes * 60
     sections:int = 2
-    num_frames = int(seconds*sections*fps)
+    num_frames = int(seconds*fps)
     num_frames_per_sctn = int(num_frames/sections)
     early_stop_seconds = int(60*30)
     width = 512
@@ -850,7 +850,7 @@ class StorySquad:
         tmp_results = StorySquad.batched_renderer(even_SBIM, early_stop, SBIMA_render_func, to_npy=True)
 
         # now render the other half of the frames if the difference between the two is greater than a threshold
-        threshold = 0.015
+        threshold = 0.015/2
         #threshold = 0.0
         to_process = None
         # first build a list of the indices of the SBIMultiArgs that need to be rendered based on the difference in the odd frames
@@ -887,13 +887,18 @@ class StorySquad:
             odd = time_idx%2==0
             even = not odd
             if even:
-                images_to_save.append(tmp_results[int(time_idx/2)])
+                try:
+                    images_to_save.append(tmp_results[int(time_idx/2)])
+                except:
+                    print(f'error with time_idx {time_idx} and tmp_results {len(tmp_results)}')
             if odd:
                 if time_idx in ti_sm_res.keys():
                     images_to_save.append(ti_sm_res[time_idx])
                 else:
-                    images_to_save.append(tmp_results[int(time_idx/2)])
-
+                    try:
+                        images_to_save.append(tmp_results[int(time_idx/2)])
+                    except:
+                        print(f'error with time_idx {time_idx}')
 
         # convert the images to PIL images
         images_to_save = [PIL.Image.fromarray(np.uint8(img*255.0)) for img in images_to_save]
