@@ -11,18 +11,37 @@ from typing import List, Any
 keys_for_ui_in_order = ["prompt", "negative_prompt", "steps", "sampler_index", "width", "height", "restore_faces",
                          "tiling", "batch_count", "batch_size",
                          "seed", "subseed", "subseed_strength", "cfg_scale"]
+DEV_MODE = False
 MAX_BATCH_SIZE = 18
 # TODO: consider adding a feature to render more results than the Image explorer can show at one time
 MAX_IEXP_SIZE = 9
+
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
     "negative_prompt": "",
-    "steps": 5,
+    "steps": 8,
     "seed": 0,
     "subseed": 0,
     "subseed_strength": 0,
     "cfg_scale": 7,
 }
+
+DEV_HYPER_PARAMS = DEFAULT_HYPER_PARAMS.copy()
+DEV_HYPER_PARAMS["steps"] = 1
+if DEV_MODE:
+    DEFAULT_HYPER_PARAMS = DEV_HYPER_PARAMS
+
+@dataclass
+class DEFAULT_HYPER_PARAMS:
+    prompt: str = DEFAULT_HYPER_PARAMS["prompt"]
+    negative_prompt: str = DEFAULT_HYPER_PARAMS["negative_prompt"]
+    steps: int = DEFAULT_HYPER_PARAMS["steps"]
+    seed: int = DEFAULT_HYPER_PARAMS["seed"]
+    subseed: int = DEFAULT_HYPER_PARAMS["subseed"]
+    subseed_strength: int = DEFAULT_HYPER_PARAMS["subseed_strength"]
+    cfg_scale: int = DEFAULT_HYPER_PARAMS["cfg_scale"]
+
+
 
 @dataclass
 class BenchMarkSettings:
@@ -34,8 +53,19 @@ class BenchMarkSettings:
 @dataclass
 class DefaultRender:
     fps:int= 12
-    num_frames = int(120*.5*fps)
+    minutes:int = 2
+    seconds:int = minutes * 60
+    sections:int = 2
+    num_frames = int(seconds*sections*fps)
+    num_frames_per_sctn = int(num_frames/sections)
     early_stop_seconds = int(60*30)
+    width = 512
+    height = 512
+    restore_faces = False
+    tiling = False
+    batch_count = 1
+    batch_size = MAX_BATCH_SIZE
+    sampler_index = 9
 
 if __name__ != "__main__" and __name__ != "story_squad":
     import random
@@ -45,6 +75,7 @@ if __name__ != "__main__" and __name__ != "story_squad":
     import copy
     from collections import OrderedDict
     import modules
+    import time
     from modules.processing import StableDiffusionProcessingTxt2Img
 else:
     # TODO: figure out how to load the correct modules when running this file directly for doctests
@@ -107,7 +138,14 @@ class SBIHyperParams:
     the idea with this class is to provide a useful interface for the user to set,add,index the hyper parameters
     """
 
-    def __init__(self, negative_prompt, steps, seed, subseed, subseed_strength, cfg_scale, prompt=None, **kwargs):
+    def __init__(self, negative_prompt=DEFAULT_HYPER_PARAMS.negative_prompt,
+                 steps=DEFAULT_HYPER_PARAMS.steps,
+                 seed=DEFAULT_HYPER_PARAMS.seed,
+                 subseed=DEFAULT_HYPER_PARAMS.subseed,
+                 subseed_strength=DEFAULT_HYPER_PARAMS.subseed_strength,
+                 cfg_scale=DEFAULT_HYPER_PARAMS.cfg_scale,
+                 prompt=DEFAULT_HYPER_PARAMS.prompt,
+                 **kwargs):
         # this just ensures that all the params are lists
 
         # If prompt was not passed via init, then check kwargs, else raise value error
@@ -228,7 +266,7 @@ class SBMultiSampleArgs:
             # maintain the other attributes
             self.__post_init__()
         elif isinstance(other, SBMultiSampleArgs):
-            self._hyper.append(other._hyper)
+            self._hyper.append(other._hyper[0])
             if other._render != None:
                 # if the other render params are not None
                 Warning("Render params passed to add will be ignored")
@@ -471,7 +509,7 @@ class StorySquad:
             last_state = json.load(f)
         return StorySquad.dict_to_all_state(last_state)
 
-    def make_mp4_from_images(self, image_list, filepath,filename, width, height, keep,fps=30)->str:
+    def make_mp4_from_images(self, image_list, filepath, filename, width, height, keep,fps=30)->str:
         import os
         """Make an mp4 from a list of images, using make_mp4"""
 
@@ -499,8 +537,15 @@ class StorySquad:
         import subprocess
         import os
         import glob
+        import uuid
         image_input_path = os.path.join(input_path, "%05d.png")
         mp4_path = os.path.join(filepath, f"{str(filename)}.mp4")
+        # check if the file exists, if it does, change mp4_path to include part of a uuid
+        if os.path.exists(mp4_path):
+            mp4_path = os.path.join(filepath, f"{str(filename)}_{str(uuid.uuid4()).split('-')[-1]}.mp4")
+
+        # make the mp4
+
         cmd = [
             'ffmpeg',
             '-y',
@@ -515,6 +560,7 @@ class StorySquad:
             '-preset', 'veryfast',
             str(mp4_path)
         ]
+        print(f'executing: {" ".join(cmd)}')
         process = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
@@ -526,6 +572,9 @@ class StorySquad:
                 os.remove(ifile)
         return mp4_path
     def render_storyboard_benchmark(self, *args):
+
+        # TODO: this currently does not save the benchmark renders to the correct folder
+
         from sys import platform
         import os
 
@@ -588,7 +637,7 @@ class StorySquad:
             # use os.system to copy the file
             os.system(f"mv {mp4_at_steps[str(steps)]} {mp4_path}.mp4")
         return [all_state,""]
-    def render_storyboard(self,num_frames:int=120,early_stop:float=3, *args):
+    def render_storyboard(self, num_frames_per_section:int=120, early_stop:float=3, *args):
         """
         >>> StorySquad.render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)],test=True)
         render_storyboard
@@ -700,15 +749,14 @@ class StorySquad:
 
         if test:
             print("test")
-            if not num_frames:
-                num_frames = 2
+            num_frames_per_section = MAX_BATCH_SIZE+2
         else:
-            if not num_frames:
-                num_frames = 120
+            if not num_frames_per_section:
+                num_frames_per_section = 120
 
         prompt_sections = get_frame_values_for_prompt_word_weights(
             [params.prompt for params in storyboard_params],
-            num_frames=num_frames
+            num_frames=num_frames_per_section
         )
 
         #  turn the weights into a list of prompts
@@ -717,7 +765,7 @@ class StorySquad:
             for frame in section:
                 prompts.append(" ".join([f"({word}:{weight})" for word, weight in frame]))
 
-        seeds = get_frame_seed_data(storyboard_params, num_frames)
+        seeds = get_frame_seed_data(storyboard_params, num_frames_per_section)
 
         # create a base SBIRenderArgs object
         # feature: this should allow the user to change the settings for rendering
@@ -740,32 +788,39 @@ class StorySquad:
 
 
         if not test or test_render:
-            images_to_save, start_time = self.batched_renderer(base_SBIMulti, early_stop)
+            #images_to_save = self.batched_renderer(base_SBIMulti, early_stop, self.storyboard)
+            images_to_save = self.batched_selective_renderer(base_SBIMulti, early_stop, self.storyboard)
 
-        end_time = time.time()
-        print(f"Time taken: {end_time - start_time}")
+
         mp4_full_path = self.make_mp4_from_images(images_to_save,
                                                   os.getenv("STORYBOARD_RENDER_PATH"),
                                                   "storyboard.mp4",512,512,False,fps=DefaultRender.fps)
         return [all_state,mp4_full_path]
 
-    def batched_renderer(self, base_SBIMulti, early_stop):
+    @staticmethod
+    def batched_renderer(SBIMulti, early_stop, SBIMA_render_func, to_npy=False):
+        import time
         images_to_save = []
         batch_times = []
         start_time = time.time()
-        for i in range(0, len(base_SBIMulti), MAX_BATCH_SIZE):
-            # actually render the images
-            slice = base_SBIMulti[i:i + MAX_BATCH_SIZE]
-            results = self.storyboard(slice.combined, 0)
-            images_to_save = images_to_save + results.all_images[1:]
+        for i in range(0, len(SBIMulti), MAX_BATCH_SIZE):
+            max_idx = min(i + MAX_BATCH_SIZE, len(SBIMulti))
+            slice = SBIMulti[i:max_idx]
+            results = SBIMA_render_func(slice.combined, 0)
+            images_to_save = images_to_save + results.all_images[1:1+len(slice)]
+
             batch_times.append(time.time())
-            print(f"Images {i} to {i + MAX_BATCH_SIZE}, of {len(base_SBIMulti)}")
+            print(f"Images {i} to {i + MAX_BATCH_SIZE}, of {len(SBIMulti)}")
             if len(batch_times) > 1:
                 print(f"batch time: {batch_times[-1] - batch_times[-2]}")
             if time.time() - start_time > early_stop:
                 print("early stop")
                 break
-        return images_to_save, start_time
+        if to_npy:
+            images_to_save = [np.array(img).astype("float16")/255.0 for img in images_to_save]
+        end_time = time.time()
+        print(f"Time taken: {end_time - start_time}")
+        return images_to_save
 
     @staticmethod
     def batched_selective_renderer(SBIMultiArgs, early_stop,SBIMA_render_func):
@@ -773,62 +828,74 @@ class StorySquad:
         >>> if True:
         ...   import PIL
         ...   import numpy as np
-        ...   f = SBMultiSampleArgs(render=SBIRenderParams(),hyper=SBIHyperParams(**DEFAULT_HYPER_PARAMS))
+        ...   f = SBMultiSampleArgs(render=SBIRenderParams(),hyper=SBIHyperParams(prompt="0"))
         ...   results = lambda :None;results.all_images=[np.random.rand(512, 512, 3) for _ in range(MAX_BATCH_SIZE+1)]
-        ...   for _ in range(100):
-        ...     f += SBIHyperParams(**DEFAULT_HYPER_PARAMS)
+        ...   for i in range(100-1):
+        ...     f += SBIHyperParams(prompt=str(i))
         ...   StorySquad.batched_selective_renderer(SBIMultiArgs=f, early_stop=10,SBIMA_render_func=lambda x,y:results )
 
         """
         import time
         import numpy as np
+        import PIL
         images_to_save = {}
         batch_times = []
         start_time = time.time()
         # start by rendering only half of the frames
-        odd_SBIM = SBIMultiArgs[::2]
-        even_SBIM = SBIMultiArgs[1::2]
-        for i in range(0, len(odd_SBIM), MAX_BATCH_SIZE):
-            # actually render the images
-            max_idx = min(i + MAX_BATCH_SIZE, len(odd_SBIM))
-            slice = odd_SBIM[i:max_idx]
-            results = SBIMA_render_func(slice.combined, 0)
+        even_SBIM = SBIMultiArgs[::2]
+        odd_SBIM = SBIMultiArgs[1::2]
 
-            t_images =  results.all_images[1:]
-            t_images= t_images[:len(slice)]
-            idxs = list(range(i, max_idx))
-            position_results = dict(zip(idxs, t_images))
-            images_to_save.update(position_results)
+        tmp_results = StorySquad.batched_renderer(even_SBIM, early_stop, SBIMA_render_func, to_npy=True)
 
-            batch_times.append(time.time())
-
-            if time.time() - start_time > early_stop:
-                print("early stop")
-                break
         # now render the other half of the frames if the difference between the two is greater than a threshold
-        threshold = 0.1
-        list_idx_sbmsi = []
-        for i in range (0, len(even_SBIM)):
-            max_idx = min(i + MAX_BATCH_SIZE, len(even_SBIM))
-            prev_idx = i
-            next_idx = i + 1
-            prev_img = images_to_save[prev_idx]
-            next_img = images_to_save[next_idx]
-            diff = np.abs(prev_img - next_img).mean()
-            if diff > threshold:
-                list_idx_sbmsi.append((i, SBIMultiArgs[i]))
+        threshold = 0.015
+        to_process = None
+        # first build a list of the indices of the SBIMultiArgs that need to be rendered based on the difference in the odd frames
+        # need something like [(odd_img_prev,even_idx_now,odd_img_next)]
+        for i in range(1, len(tmp_results) - 1):
+            difference = np.mean(np.square(tmp_results[i] - tmp_results[i+1]))
+            print(difference)
+            if difference > threshold:
+                if to_process is None:
+                    to_process = [(i*2,odd_SBIM[i])]
+                else:
+                    to_process.append((i*2,odd_SBIM[i]))
+        print(f'selective renderer found {len(to_process)} frames to process of {int(len(SBIMultiArgs)/2)} possible frames')
+        # create the new SBIMultiArgs to render
+        new_SBIM = None
+        time_idxs= []
+        if to_process is not None:
+            for time_idx, sbim in to_process:
+                if new_SBIM is None:
+                    new_SBIM = copy.deepcopy(sbim)
+                    time_idxs.append(time_idx)
+                else:
+                    new_SBIM += copy.deepcopy(sbim)
+                    time_idxs.append(time_idx)
 
-        for i in range(0, len(list_idx_sbmsi), MAX_BATCH_SIZE):
-            for ii in range(i, i + MAX_BATCH_SIZE):
-                if ii < len(list_idx_sbmsi):
-                    idx, sbmsi = list_idx_sbmsi[ii]
-                    images_to_save[idx] = SBIMA_render_func(sbmsi, 0).all_images[1]
+        # render the new SBIMultiArgs
+        ti_sm_res={}
+        if len(time_idxs) > 0:
+            smothing_results = StorySquad.batched_renderer(new_SBIM, early_stop, SBIMA_render_func, to_npy=True)
+            ti_sm_res = dict(zip(time_idxs,smothing_results))
 
-        for i, sbmsi in list_idx_sbmsi:
-            results = SBIMA_render_func(sbmsi.combined, 0)
-            images_to_save[i+1] = results.all_images[1]
+        images_to_save=[]
+        for time_idx in range(len(SBIMultiArgs)):
+            odd = time_idx%2==0
+            even = not odd
+            if even:
+                images_to_save.append(tmp_results[int(time_idx/2)])
+            if odd:
+                if time_idx in ti_sm_res.keys():
+                    images_to_save.append(ti_sm_res[time_idx])
 
-        return images_to_save, start_time
+
+        # convert the images to PIL images
+        images_to_save = [PIL.Image.fromarray(np.uint8(img*255.0)) for img in images_to_save]
+        end_time = time.time()
+        print(f"Time taken: {end_time - start_time}")
+        return images_to_save
+
 
     def update_image_exp_text(self, h_params:List[SBIHyperParams]):
         print("update_image_exp_text")
@@ -1105,34 +1172,38 @@ class StorySquad:
 
         with gr.Blocks() as param_area:
             with gr.Column(variant='panel'):
-                self.ordered_list_of_param_inputs.append(gr.Slider(minimum=1, maximum=150, step=1,
-                                                                   label="Sampling Steps",
-                                                                   value=5))
+                self.ordered_list_of_param_inputs.append(
+                    gr.Slider(minimum=1, maximum=150, step=1,label="Sampling Steps",value=5) if DEV_MODE
+                    else gr.State(DEFAULT_HYPER_PARAMS.steps))
                 self.all_components["param_inputs"]["steps"] = self.ordered_list_of_param_inputs[-1]
 
                 self.ordered_list_of_param_inputs.append(gr.State(9))
                 self.all_components["param_inputs"]["sampler_index"] = self.ordered_list_of_param_inputs[-1]
+
                 with gr.Row():
-                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=64, maximum=2048, step=64,
-                                                                       label="Width",
-                                                                       value=512))
+                    self.ordered_list_of_param_inputs.append(
+                        gr.Slider(minimum=64, maximum=2048, step=64,label="Width",value=512) if DEV_MODE
+                        else gr.State(DefaultRender.width))
                     self.all_components["param_inputs"]["width"] = self.ordered_list_of_param_inputs[-1]
 
-                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=64, maximum=2048, step=64,
-                                                                       label="Height",
-                                                                       value=512))
+                    self.ordered_list_of_param_inputs.append(
+                        gr.Slider(minimum=64, maximum=2048, step=64,label="Height",value=512) if DEV_MODE
+                        else gr.State(DefaultRender.height))
                     self.all_components["param_inputs"]["height"] = self.ordered_list_of_param_inputs[-1]
 
                 with gr.Row():
                     self.ordered_list_of_param_inputs.append(gr.Checkbox(label='Restore faces', value=False,
-                                                                         visible=True))
+                                                                         visible=True)if DEV_MODE
+                        else gr.State(DefaultRender.restore_faces))
                     self.all_components["param_inputs"]["restore_faces"] = self.ordered_list_of_param_inputs[-1]
 
-                    self.ordered_list_of_param_inputs.append(gr.Checkbox(label='Tiling', value=False))
+                    self.ordered_list_of_param_inputs.append(gr.Checkbox(label='Tiling', value=False) if DEV_MODE
+                        else gr.State(DefaultRender.tiling))
                     self.all_components["param_inputs"]["tiling"] = self.ordered_list_of_param_inputs[-1]
 
                 with gr.Row():
-                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=1, step=1, label='Batch count', value=1))
+                    self.ordered_list_of_param_inputs.append(gr.Slider(minimum=1, step=1, label='Batch count', value=1)if DEV_MODE
+                        else gr.State(DefaultRender.batch_count))
                     self.all_components["param_inputs"]["batch_count"] = self.ordered_list_of_param_inputs[-1]
 
                     self.ordered_list_of_param_inputs.append(gr.State(MAX_IEXP_SIZE))
@@ -1256,7 +1327,7 @@ class StorySquad:
             [self.all_components["param_inputs"][k] for k in
              keys_for_ui_in_order]
         self.all_components["render"].click(self.render_storyboard,
-                                            inputs=[gr.State(DefaultRender.num_frames),
+                                            inputs=[gr.State(DefaultRender.num_frames_per_sctn),
                                                     gr.State(DefaultRender.early_stop_seconds),
                                                     self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]
