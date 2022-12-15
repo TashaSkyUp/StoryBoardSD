@@ -542,6 +542,7 @@ class StorySquad:
         mp4_path = os.path.join(filepath, f"{str(filename)}.mp4")
         # check if the file exists, if it does, change mp4_path to include part of a uuid
         if os.path.exists(mp4_path):
+            print(f"file exists, changing name to {mp4_path}")
             mp4_path = os.path.join(filepath, f"{str(filename)}_{str(uuid.uuid4()).split('-')[-1]}.mp4")
 
         # make the mp4
@@ -800,6 +801,7 @@ class StorySquad:
     @staticmethod
     def batched_renderer(SBIMulti, early_stop, SBIMA_render_func, to_npy=False):
         import time
+        import numpy as np
         images_to_save = []
         batch_times = []
         start_time = time.time()
@@ -830,7 +832,7 @@ class StorySquad:
         ...   import numpy as np
         ...   f = SBMultiSampleArgs(render=SBIRenderParams(),hyper=SBIHyperParams(prompt="0"))
         ...   results = lambda :None;results.all_images=[np.random.rand(512, 512, 3) for _ in range(MAX_BATCH_SIZE+1)]
-        ...   for i in range(100-1):
+        ...   for i in range(1441-1):
         ...     f += SBIHyperParams(prompt=str(i))
         ...   StorySquad.batched_selective_renderer(SBIMultiArgs=f, early_stop=10,SBIMA_render_func=lambda x,y:results )
 
@@ -849,6 +851,7 @@ class StorySquad:
 
         # now render the other half of the frames if the difference between the two is greater than a threshold
         threshold = 0.015
+        #threshold = 0.0
         to_process = None
         # first build a list of the indices of the SBIMultiArgs that need to be rendered based on the difference in the odd frames
         # need something like [(odd_img_prev,even_idx_now,odd_img_next)]
@@ -860,11 +863,11 @@ class StorySquad:
                     to_process = [(i*2,odd_SBIM[i])]
                 else:
                     to_process.append((i*2,odd_SBIM[i]))
-        print(f'selective renderer found {len(to_process)} frames to process of {int(len(SBIMultiArgs)/2)} possible frames')
         # create the new SBIMultiArgs to render
         new_SBIM = None
         time_idxs= []
         if to_process is not None:
+            print(f'selective renderer found {len(to_process)} frames to process of {int(len(SBIMultiArgs) / 2)} possible frames')
             for time_idx, sbim in to_process:
                 if new_SBIM is None:
                     new_SBIM = copy.deepcopy(sbim)
@@ -888,6 +891,8 @@ class StorySquad:
             if odd:
                 if time_idx in ti_sm_res.keys():
                     images_to_save.append(ti_sm_res[time_idx])
+                else:
+                    images_to_save.append(tmp_results[int(time_idx/2)])
 
 
         # convert the images to PIL images
