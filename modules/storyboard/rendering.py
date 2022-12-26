@@ -730,7 +730,6 @@ def limit_per_pixel_change_slice(frames, max_change):
     return frames
 
 
-@staticmethod
 def batched_renderer(SBIMulti, SBIMA_render_func, to_npy=False, rparam: DefaultRender = DefaultRender(),
                      early_stop=None):
     import time
@@ -760,7 +759,6 @@ def batched_renderer(SBIMulti, SBIMA_render_func, to_npy=False, rparam: DefaultR
     return images_to_save
 
 
-@staticmethod
 def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultRender = DefaultRender(),
                                early_stop=None):
     """
