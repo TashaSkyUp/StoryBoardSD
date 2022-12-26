@@ -692,11 +692,11 @@ Requested path was: {f}
 def create_ui(wrap_gradio_gpu_call):
     import modules.img2img
     import modules.txt2img
-    import modules.storyboard
-    from modules.story_squad import StorySquad
+    import modules.sb_sd_render
+    from modules.story_squad import StoryBoard
 
-    # story_squad_interface = get_story_board_ui(wrap_gradio_gpu_call)
-    story_squad_interface = StorySquad().get_story_squad_ui()
+    # if modules.story_squad.DEV_MODE:
+    story_squad_interface = StoryBoard().get_story_squad_ui()
 
     with gr.Blocks(analytics_enabled=False) as txt2img_interface:
         txt2img_prompt, roll, txt2img_prompt_style, txt2img_negative_prompt, txt2img_prompt_style2, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, txt2img_paste, token_counter, token_button = create_toprow(
@@ -1870,6 +1870,17 @@ def create_ui(wrap_gradio_gpu_call):
     if not error_loading and (not os.path.exists(ui_config_file) or settings_count != len(ui_settings)):
         with open(ui_config_file, "w", encoding="utf8") as file:
             json.dump(ui_settings, file, indent=4)
+
+    if not modules.story_squad.DEV_MODE:
+        tabs.visible = False
+        mod = [b.__setattr__("visible", False) for b in demo.blocks.values() if
+               "elem_id" in dir(b) and b.elem_id == "quicksettings"]
+        with demo:
+            story_squad_interface.render()
+            mod = [b.__setattr__("visible", False) for b in demo.blocks.values() if
+                   "elem_id" in dir(b) and b.elem_id == "quicksettings"]
+    else:
+        pass
 
     return demo
 

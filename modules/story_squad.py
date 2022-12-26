@@ -1,46 +1,22 @@
 import os
 
 import gradio.components
-import gradio as gr
 import json
-
+from modules.storyboard.rendering import create_voice_over_for_storyboard as voice_over, make_mp4_from_images, \
+    get_frame_values_for_prompt_word_weights, get_frame_seed_data, get_prompt_words_and_weights_list, DefaultRender, \
+    MAX_BATCH_SIZE, batched_selective_renderer, SBMultiSampleArgs, SBIHyperParams, SBIRenderParams, SBImageResults, \
+    DEFAULT_HYPER_PARAMS, DEV_HYPER_PARAMS
 from dataclasses import dataclass
 
 print(__name__)
-from typing import List, Any
+from typing import List
+
 keys_for_ui_in_order = ["prompt", "negative_prompt", "steps", "sampler_index", "width", "height", "restore_faces",
                          "tiling", "batch_count", "batch_size",
                          "seed", "subseed", "subseed_strength", "cfg_scale"]
-DEV_MODE = False
-MAX_BATCH_SIZE = 18
+DEV_MODE = True
 # TODO: consider adding a feature to render more results than the Image explorer can show at one time
 MAX_IEXP_SIZE = 9
-
-DEFAULT_HYPER_PARAMS = {
-    "prompt": "",
-    "negative_prompt": "",
-    "steps": 8,
-    "seed": 0,
-    "subseed": 0,
-    "subseed_strength": 0,
-    "cfg_scale": 7,
-}
-
-DEV_HYPER_PARAMS = DEFAULT_HYPER_PARAMS.copy()
-DEV_HYPER_PARAMS["steps"] = 1
-if DEV_MODE:
-    DEFAULT_HYPER_PARAMS = DEV_HYPER_PARAMS
-
-@dataclass
-class DEFAULT_HYPER_PARAMS:
-    prompt: str = DEFAULT_HYPER_PARAMS["prompt"]
-    negative_prompt: str = DEFAULT_HYPER_PARAMS["negative_prompt"]
-    steps: int = DEFAULT_HYPER_PARAMS["steps"]
-    seed: int = DEFAULT_HYPER_PARAMS["seed"]
-    subseed: int = DEFAULT_HYPER_PARAMS["subseed"]
-    subseed_strength: int = DEFAULT_HYPER_PARAMS["subseed_strength"]
-    cfg_scale: int = DEFAULT_HYPER_PARAMS["cfg_scale"]
-
 
 
 @dataclass
@@ -50,22 +26,6 @@ class BenchMarkSettings:
     num_frames_per_sctn = 5
     stop_after_mins = 10
 
-@dataclass
-class DefaultRender:
-    fps:int= 10
-    minutes:int = 2
-    seconds:int = minutes * 60
-    sections:int = 2
-    num_frames = int(seconds*fps)
-    num_frames_per_sctn = int(num_frames/sections)
-    early_stop_seconds = int(60*30)
-    width = 512
-    height = 512
-    restore_faces = False
-    tiling = False
-    batch_count = 1
-    batch_size = MAX_BATCH_SIZE
-    sampler_index = 9
 
 if __name__ != "__main__" and __name__ != "story_squad":
     import random
@@ -75,54 +35,11 @@ if __name__ != "__main__" and __name__ != "story_squad":
     import copy
     from collections import OrderedDict
     import modules
-    import time
     from modules.processing import StableDiffusionProcessingTxt2Img
 else:
     # TODO: figure out how to load the correct modules when running this file directly for doctests
     import copy
     print("Running doctests")
-
-def sanitize_prompt(prompt):
-    prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
-    prompt = prompt.replace("\n", " ")
-    prompt = prompt.replace("\r", " ")
-    prompt = prompt.replace("[", " ").replace("]", " ")
-    prompt = prompt.replace("{", " ").replace("}", " ")
-    # compact blankspace
-    for i in range(10):
-        prompt = prompt.replace("  ", " ")
-
-    prompt = prompt.replace("(", "").replace(")", "")
-    return prompt.strip()
-
-
-def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
-    """
-    >>> get_prompt_words_and_weights_list("hello:1 world:.2 how are (you:1.0)")
-    [('hello', 1.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
-    """
-    prompt = sanitize_prompt(prompt)
-    words = prompt.split(" ")
-    possible_word_weight_pairs = [i.split(":") for i in words]
-    w = 1.0
-    out: list[tuple[Any, float]] = []
-    for word_weight_pair in possible_word_weight_pairs:
-        value_count = len(word_weight_pair)  # number of values in the tuple
-        # if the length of the item that is possibly a word weight pair is 1 then it is just a word
-        if value_count == 1:  # when there is no weight assigned to the word
-            w = 1.0
-        # if the length of the item that is possibly a word weight pair is 2 then it is a word and a weight
-        elif value_count == 2:  # then there is a word and probably a weight in the tuple
-            # if the second item in the word weight pair is a float then it is a weight
-            try:
-                w = float(word_weight_pair[1])
-            # if the second item in the word weight pair is not a float then it is not a weight
-            except ValueError:
-                raise ValueError(f"Could not convert {word_weight_pair[1]} to a float")
-        else:
-            raise ValueError(f"Could not convert {word_weight_pair} to a word weight pair")
-        out.append((word_weight_pair[0], w))
-    return out
 
 
 def random_noise_image():
@@ -130,315 +47,123 @@ def random_noise_image():
 
 
 def make_gr_label(label):
+    import gradio as gr
     return gr.HTML(f"<div class = 'flex ont-bold text-2xl items-center justify-center'> {label} </div>")
 
 
-class SBIHyperParams:
+class ExplorerModel:
     """
-    the idea with this class is to provide a useful interface for the user to set,add,index the hyper parameters
-    """
-
-    def __init__(self, negative_prompt=DEFAULT_HYPER_PARAMS.negative_prompt,
-                 steps=DEFAULT_HYPER_PARAMS.steps,
-                 seed=DEFAULT_HYPER_PARAMS.seed,
-                 subseed=DEFAULT_HYPER_PARAMS.subseed,
-                 subseed_strength=DEFAULT_HYPER_PARAMS.subseed_strength,
-                 cfg_scale=DEFAULT_HYPER_PARAMS.cfg_scale,
-                 prompt=DEFAULT_HYPER_PARAMS.prompt,
-                 **kwargs):
-        # this just ensures that all the params are lists
-
-        # If prompt was not passed via init, then check kwargs, else raise value error
-        # this is so that the prompt can be passed as a positional argument or a keyword argument
-        # so that the class can be created by unpacking the dictionary of this object
-        if prompt is None:
-            if "_prompt" in kwargs:
-                _prompt = kwargs["_prompt"]
-            else:
-                raise ValueError("prompt is required")
-        else:
-            _prompt = prompt
-
-        self._prompt = self._make_list(_prompt)
-        self.negative_prompt = self._make_list(negative_prompt)
-        self.steps = self._make_list(steps)
-        self.seed = self._make_list(seed)
-        self.subseed = self._make_list(subseed)
-        self.subseed_strength = self._make_list(subseed_strength)
-        self.cfg_scale = self._make_list(cfg_scale)
-
-    def __getitem__(self, item):
-        return SBIHyperParams(prompt = self._prompt[item], negative_prompt=self.negative_prompt[item],
-                              steps=self.steps[item], seed=self.seed[item], subseed=self.subseed[item],
-                              subseed_strength=self.subseed_strength[item], cfg_scale=self.cfg_scale[item])
-    def _make_list(self, item: object) -> [object]:
-        if isinstance(item, list):
-            return item
-        else:
-            return [item]
-
-    def __add__(self, other):
-        # this allows this class to be used to append to itself
-        if isinstance(other, SBIHyperParams):
-            return SBIHyperParams(
-                prompt=self._prompt + other._prompt,
-                negative_prompt=self.negative_prompt + other.negative_prompt,
-                steps=self.steps + other.steps,
-                seed=self.seed + other.seed,
-                subseed=self.subseed + other.subseed,
-                subseed_strength=self.subseed_strength + other.subseed_strength,
-                cfg_scale=self.cfg_scale + other.cfg_scale,
-            )
-
-    @property
-    def prompt(self):
-        # if there is only one prompt then return it as a string
-        if len(self._prompt) == 1:
-            return self._prompt[0]
-        else:
-            return self._prompt
-
-    @prompt.setter
-    def prompt(self, value):
-        self._prompt = self._make_list(value)
-    def __json__(self):
-        # serialize the object to a json string
-        return json.dumps(self.__dict__)
-
-    def __str__(self):
-        return self.__json__()
-
-@dataclass
-class SBIRenderParams:
-    width: int = 512
-    height: int = 512
-    restore_faces: bool = False
-    tiling: bool = False
-    batch_count: int = 1
-    batch_size: int = MAX_BATCH_SIZE
-    sampler_index: int = 9
-
-
-class SBMultiSampleArgs:
-    """This is a class to hold and manage a collection of arguments to pass to the model
-     with a batch size equal to the number of samples in the collection
-     The arguments that are passed to the model and can be different per sample are
-     prompt, negative_prompt, steps, seed, subseed, subseed_strength, cfg_scale
-     The arguments that are passed to the model and are the same for all samples are
-     width, height, restore_faces, tiling, batch_count, batch_size, sampler_index
-
-     they have been split into hyper params and render params"""
-
-    def __init__(self, render: SBIRenderParams, hyper: List[SBIHyperParams] = []):
-        # this just ensures that all the params are lists
-        self._hyper = self._make_list(hyper)
-        self._render = render
-        self._length = len(self._hyper)
-        for i in range(self._length):
-            if not isinstance(self._hyper[i], SBIHyperParams):
-                raise TypeError(f'item {i} in hyper is not an instance of SBIHyperParams')
-        self.__post_init__()
-
-    def __post_init__(self):
-        self._length = len(self._hyper)
-
-    @property
-    def combined(self):
-        # combines the contents of each hyper param into a single hyper param
-        # this is useful for when you want to run a single render with multiple hyper params
-        self._combined = copy.deepcopy(self._hyper[0])
-        for i in range(1, self._length):
-            self._combined += self._hyper[i]
-        return SBMultiSampleArgs(render=self._render, hyper=[self._combined])
-
-    def _make_list(self, item):
-
-        if isinstance(item, list):
-            return item
-        else:
-            return [item]
-
-    def __add__(self, other):
-        # if other is a tuple of hyper and render
-        if isinstance(other, SBIHyperParams):
-            # add the params to the lists
-            self._hyper.append(other)
-            # maintain the other attributes
-            self.__post_init__()
-        elif isinstance(other, SBMultiSampleArgs):
-            self._hyper.append(other._hyper[0])
-            if other._render != None:
-                # if the other render params are not None
-                Warning("Render params passed to add will be ignored")
-            # maintain the other attributes
-            self.__post_init__()
-        else:
-            raise TypeError("Can only add SBIHyperParams or SBMultiSampleArgs")
-
-        return self
-
-    @property
-    def hyper(self):
-        if self._length == 1:
-            # if there is only one hyper param, return it
-            return self._hyper[0]
-        else:
-            return self._hyper
-
-    @hyper.setter
-    def hyper(self, value):
-        self._hyper = self._make_list(value)
-        self.__post_init__()
-
-    @property
-    def render(self):
-        return self._render
-
-    def __iter__(self):
-        my_iter = iter(zip(self._hyper, [self._render] * len(self._hyper)))
-        return my_iter
-
-    def __len__(self):
-        return self._length
-
-    def __getitem__(self, item):
-        tmp = SBMultiSampleArgs(render=self._render, hyper=self._hyper[item])
-        return tmp
-
-
-class SBImageResults:
-    """
-    This class is used to hold the results of a render provided in/by the modules.processing.Processed class
+    This is a base class for models that are executed to create new SBMultiSampleArgs given input of a history of
+    user perfeneces and the SBIRenderParams to use. Subclasses should implement the generate_params method
     """
 
-    def __init__(self, processed):
-        self.batch_size = processed.batch_size
-        self.processed = processed
-        self.all_images = processed.images
-        self.all_prompts = processed.all_prompts
-        self.all_seeds = processed.all_seeds
-        self.all_subseeds = processed.all_subseeds
-        if len(self.all_subseeds) != len(self.all_seeds):
-            self.all_subseeds = self.all_seeds.copy()
+    def __call__(self, *args, **kwargs):
+        return self.generate_params(*args, **kwargs)
 
-        # these need to be adapted to be changable inter-batch if possible
-        self.all_negative_prompts = [processed.negative_prompt] * processed.batch_size
-        self.all_steps = [processed.steps] * processed.batch_size
-        self.all_subseed_strengths = [processed.subseed_strength] * len(processed.all_seeds)
-        self.all_cfg_scales = [processed.cfg_scale] * len(processed.all_seeds)
+    def generate_params(self, render_params: SBIRenderParams, param_history: [SBIHyperParams]) -> SBMultiSampleArgs:
+        raise NotImplementedError
 
-        self.batch_size = processed.batch_size
-        self.cfg_scale = processed.cfg_scale
-        self.clip_skip = processed.clip_skip
-        self.height = processed.height
-        self.width = processed.width
-        self.job_timestamp = processed.job_timestamp
-        self.negative_prompt = processed.negative_prompt
-        self.sampler_index = processed.sampler_index
-        self.sampler_name = processed.sampler
-        self.steps = processed.steps
-        self.sb_iparams: SBMultiSampleArgs = self.sb_multi_sample_args_from_sd_results()
-
-        self.img_hyper_params_list = [SBIHyperParams(prompt=prompt,
-                                                     negative_prompt=negative_prompt,
-                                                     steps=steps,
-                                                     seed=seed,
-                                                     subseed=subseed,
-                                                     subseed_strength=subseed_strength,
-                                                     cfg_scale=cfg_scale)
-                                      for prompt,
-                                          negative_prompt,
-                                          steps,
-                                          seed,
-                                          subseed,
-                                          subseed_strength,
-                                          # todo: fix the dimensionality of the ones that are not lists
-                                          cfg_scale in zip(self.all_prompts,
-                                                           self.all_negative_prompts,
-                                                           self.all_steps,
-                                                           self.all_seeds,
-                                                           self.all_subseeds,
-                                                           self.all_subseed_strengths,
-                                                           self.all_cfg_scales)]
-
-        tmp_list_of_st_sq_render_params = [SBIRenderParams(width=self.width,
-                                                           height=self.height,
-                                                           restore_faces=processed.restore_faces,
-                                                           # tiling does not make it to through the conversion to "procesed"
-                                                           # tiling=processed.extra_generation_params[""],
-                                                           tiling=None,
-                                                           # batch count does not make it to through the conversion to "procesed"
-                                                           # batch_count=processed.,batch_count
-                                                           batch_count=None,
-                                                           batch_size=processed.batch_size,
-                                                           sampler_index=processed.sampler_index)
-                                           for _ in range(processed.batch_size)]
-
-        self.all_as_stb_image_params = [SBMultiSampleArgs(hyper=hyper,
-                                                          render=render)
-                                        for hyper, render in zip(self.img_hyper_params_list,
-                                                                 tmp_list_of_st_sq_render_params)]
-
-        # self.results_as_list= list(zip(self.all_images,
-
-    def __iter__(self):
-        o = iter(self.img_hyper_params_list)
-        return o
-
-    def __getitem__(self, item):
-        return self.img_hyper_params_list[item]
-
-    def __add__(self, other):
-        if isinstance(other, SBImageResults):
-            self.img_hyper_params_list += other.img_hyper_params_list
-        else:
-            print("Cannot add SBImageResults to non SBImageResults")
-
-    def sb_multi_sample_args_from_sd_results(self) -> SBMultiSampleArgs:
-        # convert the StableDiffusionProcessingTxt2Img params to SBMultiSampleArgs
-        processed = self.processed
-        if len(processed.all_seeds) == len(processed.all_prompts):
-            # then these results are for multiple seeds and prompts
-            t_hyp = SBIHyperParams(prompt=processed.all_prompts,
-                                   negative_prompt=processed.negative_prompt,
-                                   steps=processed.steps,
-                                   seed=processed.all_seeds,
-                                   subseed=processed.all_subseeds,
-                                   # TODO: check if this is valid for multiple subseed
-                                   #  strengths
-                                   subseed_strength=processed.subseed_strength,
-                                   cfg_scale=processed.cfg_scale)
-        else:
-            t_hyp = SBIHyperParams(prompt=processed.prompt,
-                                   negative_prompt=processed.negative_prompt,
-                                   steps=processed.steps,
-                                   seed=processed.seed,
-                                   subseed=processed.subseed,
-                                   subseed_strength=processed.subseed_strength,
-                                   cfg_scale=processed.cfg_scale)
-
-        t_render = SBIRenderParams(width=processed.width,
-                                   height=processed.height,
-                                   restore_faces=processed.restore_faces,
-                                   # TODO: figure out where to get this from
-                                   tiling=False,
-                                   # TODO: check if the Processed class is just for one batch always
-                                   batch_count=1,
-                                   batch_size=processed.batch_size,
-                                   sampler_index=processed.sampler_index)
-
-        t_params = SBMultiSampleArgs(hyper=t_hyp, render=t_render)
-
-        return t_params
-
-
-class StorySquad:
+class SimpleExplorerModel(ExplorerModel):
+    """
+    >>> if True:
+    ...  history =[ (i,1) for i in get_test_storyboard()]
+    ...  SimpleExplorerModel().generate_params(SBIRenderParams(),history)
+    [SBIHyperParams()]
+    """
     def __init__(self):
+        super().__init__()
+
+    def generate_params(self, render_params: SBIRenderParams, param_history: [SBIHyperParams]) -> SBMultiSampleArgs:
+
+        base_hyper_params = copy.deepcopy(param_history[-1][0])
+        base_hyper_params.seed=[-1]
+        base_hyper_params.subseed=[-1]
+        base_hyper_params.subseed_strength=[0]
+
+        def simple_param_gen_func(history: [SBIHyperParams], num:int) -> SBIHyperParams:
+
+            import random
+            # check that history is a valid structure of a list of tubples
+            if not isinstance(history, list):
+                raise ValueError("history must be a list")
+            if not all([isinstance(h, tuple) for h in history]):
+                raise ValueError("history must be a list of tuples")
+            if not all([len(h) == 2 for h in history]):
+                raise ValueError("history must be a list of tuples of length 2")
+
+            print("simple_param_gen_func")
+            noise = 0.33
+
+            unzip = list(zip(*history))
+            params = unzip[0]
+            preferences = unzip[1]
+
+            words_accum = [[i[0], 0, .000001] for i in get_prompt_words_and_weights_list(params[0].prompt)]
+
+            for n_param, pref_for_params in zip(params, preferences):
+                words_and_weights = get_prompt_words_and_weights_list(n_param.prompt)
+                for i in range(len(words_and_weights)):
+                    if pref_for_params == 1:
+                        # upvote
+                        words_accum[i][1] += words_and_weights[i][1]
+                        words_accum[i][2] += 1
+                    elif pref_for_params == 2:
+                        # downvote
+                        words_accum[i][1] -= words_and_weights[i][1]
+                        words_accum[i][2] += 1
+                    elif pref_for_params == 3:
+                        # select for story board
+                        words_accum[i][1] += words_and_weights[i][1]
+                        words_accum[i][2] += 1
+                    else:
+                        # no vote
+                        pass
+
+            word_means = [[i[0], i[1] / i[2]] for i in words_accum]
+
+            out_params = copy.deepcopy(base_hyper_params)
+            # out_params.prompt = []
+            # out_params.seed = []
+            for idx in range(num):
+                new_params = copy.deepcopy(base_hyper_params)
+                # re weight the words based on the mean and generate a new prompt
+                prompt = ""
+                for word in word_means:
+                    _noise = (random.random() * noise) - (noise / 2.0)
+                    prompt += f"({word[0]}:{word[1] + _noise}) "
+                new_params.prompt = prompt.strip()
+                out_params += new_params
+
+            return out_params
+
+        hyper_params = simple_param_gen_func(param_history,num=9)[1:]
+        return SBMultiSampleArgs(render_params, hyper_params)
+
+def get_test_storyboard():
+    test_data = [
+        "(dog:1) cat:0",
+        "(dog:1) cat:1",
+        "(dog:0) cat:1",
+    ]
+    storyboard_params = [SBIHyperParams(
+        prompt=prompt,
+        seed=i,
+        negative_prompt="",
+        cfg_scale=7,
+        steps=5,
+        subseed=-1,
+        subseed_strength=0.0,
+    ) for i, prompt in enumerate(test_data)]
+    return storyboard_params
+
+class StoryBoard:
+    def __init__(self):
+        import gradio as gr
         # import some functionality from the provided webui
         from modules.ui import setup_progressbar, create_seed_inputs
 
         # import custom sampler caller and assign it to be easy to access
-        from modules.storyboard import storyboard_call_multi as storyboardtmp
+        from modules.sb_sd_render import storyboard_call_multi as storyboardtmp
         self.storyboard = storyboardtmp
 
         # assign imported functionality to be easy to access
@@ -467,116 +192,10 @@ class StorySquad:
             self.all_state = gr.State(self.all_state)
             self.setup_story_board_events()
 
-    @staticmethod
-    def dict_to_all_state(new_state: dict,all_state={}):
-        # update the all_state dict with the new values
-        for key, value in new_state.items():
-            all_state[key] = []
-            if key =="history":
-                for t in value:
-                    sbh= SBIHyperParams(**t[0])
-                    vote = t[1]
-                    all_state[key].append((sbh,vote))
-            elif key == "im_explorer_hparams":
-                for data in value:
-                    all_state[key].append(SBIHyperParams(**data))
-            elif key == "story_board":
-                for data in value:
-                    all_state[key].append(SBIHyperParams(**data))
-            else:
-                all_state[key] = value
-        return all_state
-    def all_state_to_dict(self,all_state):
-
-        o = "{"
-        for sk, sv in all_state.items():
-            o = o + f'"{sk}":'
-            o = o + f'['
-            for li in sv:
-                if type(li) == tuple:
-                    o = o + f'{(li[0].__dict__, li[1])},'
-                else:
-                    o = o + f'{li.__dict__},'
-            o = o + "],"
-        o = o + "}"
-        return o
-    def all_state_to_json(self,all_state):
-        return json.dumps(self.all_state_to_dict(all_state))
-    @staticmethod
-    def load_last_state():
-        # load the last state
-        with open("last_state.json", "r") as f:
-            last_state = json.load(f)
-        return StorySquad.dict_to_all_state(last_state)
-
-    def make_mp4_from_images(self, image_list, filepath, filename, width, height, keep,fps=30)->str:
-        import os
-        """Make an mp4 from a list of images, using make_mp4"""
-
-        # save the images to a temp folder
-        temp_folder_path = os.path.join(filepath, "temp")
-        if not os.path.exists(temp_folder_path):
-            try:
-                os.mkdir(temp_folder_path)
-            except OSError:
-                # create the parent folder if it doesn't exist
-                os.mkdir(os.path.dirname(temp_folder_path))
-                os.mkdir(temp_folder_path)
-
-
-        for i, img in enumerate(image_list):
-            i_filename = os.path.join(temp_folder_path, f"{str(i).zfill(5)}.png")
-            img.save(f"{i_filename}")
-
-        # make the mp4
-
-        return self.make_mp4(f"{temp_folder_path}", filepath, filename, width, height, keep,fps=DefaultRender.fps)
-
-
-    def make_mp4(self, input_path,filepath, filename, width, height, keep,fps=30)->str:
-        import subprocess
-        import os
-        import glob
-        import uuid
-        image_input_path = os.path.join(input_path, "%05d.png")
-        mp4_path = os.path.join(filepath, f"{str(filename)}.mp4")
-        # check if the file exists, if it does, change mp4_path to include part of a uuid
-        if os.path.exists(mp4_path):
-            print(f"file exists, changing name to {mp4_path}")
-            mp4_path = os.path.join(filepath, f"{str(filename)}_{str(uuid.uuid4()).split('-')[-1]}.mp4")
-
-        # make the mp4
-
-        cmd = [
-            'ffmpeg',
-            '-y',
-            '-vcodec', 'png',
-            '-r', str(fps),
-            '-start_number', str(0),
-            '-i', str(image_input_path),
-            '-c:v', 'libx264',
-            '-vf', 'scale=' + str(width) + ':' + str(height),
-            '-pix_fmt', 'yuv420p',
-            '-crf', '17',
-            '-preset', 'veryfast',
-            str(mp4_path)
-        ]
-        print(f'executing: {" ".join(cmd)}')
-        process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        if process.returncode != 0:
-            print(stderr)
-            raise RuntimeError(stderr)
-        if keep == False:
-            for ifile in glob.glob(input_path + "/*.png"):
-                os.remove(ifile)
-        return mp4_path
     def render_storyboard_benchmark(self, *args):
 
         # TODO: this currently does not save the benchmark renders to the correct folder
 
-        from sys import platform
         import os
 
         all_state = args[0]
@@ -628,8 +247,7 @@ class StorySquad:
         for combo in out_args:
             steps, fps, all_state, new_ui_params = combo["steps"], combo["fps"], combo["all_state"], combo["params"]
             if mp4_at_steps[str(steps)] == "":
-                _,mp4_at_steps[str(steps)] = self.render_storyboard(
-                    *[num_frames_per_sctn,stop_after_mins*60,all_state,*new_ui_params])
+                _,mp4_at_steps[str(steps)] = self.on_render_storyboard(stop_after_mins * 60, all_state, *new_ui_params)
 
             mp4_filename = f"steps_{steps}_fps_{fps}"
             #benchmark_folder, benchmark_folder,mp4_filename
@@ -638,89 +256,19 @@ class StorySquad:
             # use os.system to copy the file
             os.system(f"mv {mp4_at_steps[str(steps)]} {mp4_path}.mp4")
         return [all_state,""]
-    def render_storyboard(self, num_frames_per_section:int=120, early_stop:float=3, *args):
+
+    def on_render_storyboard(self, early_stop: float = 3, *args):
         """
-        >>> StorySquad.render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)],test=True)
+        >>> StorySquad.on_render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)])
         render_storyboard
         ()
         test
         [prompt: (dog:1.0) (cat:0.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:0.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0]
         """
-        import time
-        print("render_storyboard")
+        print("on_render_storyboard")
 
         all_state = args[0]
         ui_params = args[1:]
-
-        def get_frame_values_for_prompt_word_weights(prompts, num_frames):  # list[sections[frames[word:weight tuples]]]
-            """
-            >>> while True:
-            ...     sections = get_frame_values_for_prompt_word_weights([CallArgsAsData(prompt= "(dog:1) cat:0"),CallArgsAsData(prompt= "(dog:1) cat:1"),CallArgsAsData(prompt= "(dog:0) cat:1")],4)
-            ...     for section in sections:
-            ...         print(section)
-            ...     break
-            [[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 0.3333333333333333)], [('dog', 1.0), ('cat', 0.6666666666666666)], [('dog', 1.0), ('cat', 1.0)]]
-            [[('dog', 1.0), ('cat', 1.0)], [('dog', 0.6666666666666667), ('cat', 1.0)], [('dog', 0.33333333333333337), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]
-            """
-            # get the weights for each word of each prompt in the prompts list returns a list of lists of tuples
-            words_and_weights_for_prompts = [get_prompt_words_and_weights_list(p) for p in prompts]
-
-            # define the two distinct sections of the storyboard_call_multi
-            # each section is composed of frames, each frame has different weights for each word (probably) which results
-            # in a unique image for the animation
-            sections = [
-                [words_and_weights_for_prompts[0], words_and_weights_for_prompts[1]],
-                # transition from lattice pt 1 to 2
-                [words_and_weights_for_prompts[1], words_and_weights_for_prompts[2]],
-                # transition from lattice pt 2 to 3
-            ]
-
-            # interpolate the weights linearly for each word in each section for each frame and return the sections
-            def get_word_weight_at_percent(section,word_index,percent):
-                """
-                >>> get_word_weight_at_percent([("dog",0.0),("cat",1.0)],0,0.5)
-                0.5
-                """
-                start_weight = section[0][word_index][1]
-                end_weight = section[1][word_index][1]
-                return start_weight + percent * (end_weight - start_weight)
-
-            sections_frames = []
-            for section in sections:
-                start:tuple(str,float) = section[0]
-                end:tuple(str,float) = section[1]
-                word_frame_weights = []
-                for i in range(num_frames):
-                    frame_weights = []
-                    for word_idx, word_at_pos in enumerate(start):
-                        # format like: ('dog', 0.0)
-                        word_start_weight = start[word_idx][1]
-                        word_end_weight = end[word_idx][1]
-                        word_frame_weight = \
-                            word_start_weight + (word_end_weight - word_start_weight) * (i / (num_frames - 1))
-                        frame_weights.append((word_at_pos[0], word_frame_weight))
-                    word_frame_weights.append(frame_weights)
-                sections_frames.append(word_frame_weights)
-
-            return sections_frames
-
-        def get_frame_seed_data(board_params, _num_frames) -> [()]:  # List[(seed,subseed,weight)]
-            """
-            interpolation between seeds is done by setting the subseed to the target seed of the next section, and then
-            interpolating the subseed weight from 0  to 1
-            """
-            sections = [
-                [board_params[0], board_params[1]],
-                [board_params[1], board_params[2]],
-            ]
-            all_frames = []
-            for start, end in sections:
-                seed = start.seed
-                subseed = end.seed
-                for i in range(_num_frames):
-                    sub_seed_weight = i / (_num_frames - 1)
-                    all_frames.append((seed, subseed, sub_seed_weight))
-            return all_frames
 
         storyboard_params = all_state["story_board"]
         test_render = False
@@ -728,53 +276,60 @@ class StorySquad:
             """Test that is ran when the storyboard_params are not set but the user presses the render button"""
             test = True
             test_render = True
-            test_data = [
-                "(dog:1) cat:0",
-                "(dog:1) cat:1",
-                "(dog:0) cat:1",
-            ]
-            storyboard_params = [SBIHyperParams(
-                prompt=prompt,
-                seed=i,
-                negative_prompt="",
-                cfg_scale=7,
-                steps=5,
-                subseed=-1,
-                subseed_strength=0.0,
-            ) for i, prompt in enumerate(test_data)]
+            storyboard_params = get_test_storyboard()
 
         else:
             test = False
             storyboard_params = all_state["story_board"]
             ui_params = args[1:]
 
-        if test:
-            print("test")
-            num_frames_per_section = MAX_BATCH_SIZE+2
+
+        all_state, complete_mp4_f_path = self.compose_storyboard_render(all_state, early_stop,
+                                                                        storyboard_params, test, test_render, ui_params)
+        return [all_state,complete_mp4_f_path]
+
+    def compose_storyboard_render(self, all_state, early_stop, storyboard_params, test,
+                                  test_render, ui_params):
+
+        # in the interest of syncing the length of the audio voice over and the length of the video it is important to
+        # consider the length of the audio first, primarily because the audio is much quicker to render, but also
+        # because it is harder to manipulate temporaly then the mostly arbitrary contents of the video
+
+        # the audio is rendered first, attempting to reach some target lenght.
+        # the video is rendered second, to match the length of the resultant audio
+
+        import modules.storyboard.rendering as rendering
+        my_render_params =  rendering.DefaultRender()
+        mytext = ui_params[0]
+        if test or test_render:
+            mytext = "one two three four five six seven eight nine ten"
+        audio_f_path, vo_len_secs = voice_over(mytext, 1, DefaultRender.seconds)
+
+        my_render_params.num_frames_per_section = int((my_render_params.fps * vo_len_secs) / my_render_params.sections)
+        my_render_params.num_frames = my_render_params.num_frames_per_section * my_render_params.sections
+        my_render_params.seconds = vo_len_secs
+        if my_render_params.num_frames < my_render_params.min_frames_per_render:
+            my_render_params.num_frames = my_render_params.min_frames_per_render
+            my_render_params.fps = my_render_params.num_frames/my_render_params.seconds
+            my_render_params.frames_per_section = int(my_render_params.num_frames/my_render_params.sections)
         else:
-            if not num_frames_per_section:
-                num_frames_per_section = 120
+            use_fps = my_render_params.fps
 
         prompt_sections = get_frame_values_for_prompt_word_weights(
             [params.prompt for params in storyboard_params],
-            num_frames=num_frames_per_section
+            num_frames=my_render_params.num_frames_per_section
         )
-
         #  turn the weights into a list of prompts
         prompts = []
         for section in prompt_sections:
             for frame in section:
                 prompts.append(" ".join([f"({word}:{weight})" for word, weight in frame]))
-
-        seeds = get_frame_seed_data(storyboard_params, num_frames_per_section)
-
+        seeds = get_frame_seed_data(storyboard_params, my_render_params.num_frames_per_section)
         # create a base SBIRenderArgs object
         # feature: this should allow the user to change the settings for rendering
         base_SBIMulti = self.get_sb_multi_sample_params_from_ui(ui_params)
-
         base_Hyper = copy.deepcopy(base_SBIMulti.hyper)
         # turn the list of prompts and seeds into a list of CallArgsAsData using the base_params as a template
-
         # populate the storyboard_call_multi with the prompts and seeds
         for prompt, seed in zip(prompts, seeds):
             base_SBIMulti += SBIHyperParams(
@@ -787,125 +342,32 @@ class StorySquad:
                 cfg_scale=base_Hyper.cfg_scale,
             )
 
-
         if not test or test_render:
-            #images_to_save = self.batched_renderer(base_SBIMulti, early_stop, self.storyboard)
-            images_to_save = self.batched_selective_renderer(base_SBIMulti, early_stop, self.storyboard)
+            # images_to_save = self.batched_renderer(base_SBIMulti, early_stop, self.storyboard)
+            images_to_save = batched_selective_renderer(base_SBIMulti,
+                                                        rparam=my_render_params,
+                                                        early_stop=early_stop,
+                                                        SBIMA_render_func=self.storyboard)
 
+        working_dir = os.path.join(os.getenv("STORYBOARD_RENDER_PATH") ,"tmp")
+        print(f'working_dir: {working_dir}')
+        print(f'audio_f_path: {audio_f_path}')
+        video_f_path = make_mp4_from_images(images_to_save,
+                                                working_dir,
+                                                "video.mp4", 512, 512, False, fps=DefaultRender.fps)
+        print(f'video_f_path: {video_f_path}')
 
-        mp4_full_path = self.make_mp4_from_images(images_to_save,
-                                                  os.getenv("STORYBOARD_RENDER_PATH"),
-                                                  "storyboard.mp4",512,512,False,fps=DefaultRender.fps)
-        return [all_state,mp4_full_path]
+        complete_mp4_f_path = rendering.join_video_audio(video_f_path, audio_f_path)
 
-    @staticmethod
-    def batched_renderer(SBIMulti, early_stop, SBIMA_render_func, to_npy=False):
-        import time
-        import numpy as np
-        images_to_save = []
-        batch_times = []
-        start_time = time.time()
-        for i in range(0, len(SBIMulti), MAX_BATCH_SIZE):
-            max_idx = min(i + MAX_BATCH_SIZE, len(SBIMulti))
-            slice = SBIMulti[i:max_idx]
-            results = SBIMA_render_func(slice.combined, 0)
-            images_to_save = images_to_save + results.all_images[1:1+len(slice)]
-
-            batch_times.append(time.time())
-            print(f"Images {i} to {i + MAX_BATCH_SIZE}, of {len(SBIMulti)}")
-            if len(batch_times) > 1:
-                print(f"batch time: {batch_times[-1] - batch_times[-2]}")
-            if time.time() - start_time > early_stop:
-                print("early stop")
-                break
-        if to_npy:
-            images_to_save = [np.array(img).astype("float16")/255.0 for img in images_to_save]
-        end_time = time.time()
-        print(f"Time taken: {end_time - start_time}")
-        return images_to_save
-
-    @staticmethod
-    def batched_selective_renderer(SBIMultiArgs, early_stop,SBIMA_render_func):
-        """
-        >>> if True:
-        ...   import PIL
-        ...   import numpy as np
-        ...   f = SBMultiSampleArgs(render=SBIRenderParams(),hyper=SBIHyperParams(prompt="0"))
-        ...   results = lambda :None;results.all_images=[np.random.rand(512, 512, 3) for _ in range(MAX_BATCH_SIZE+1)]
-        ...   for i in range(1441-1):
-        ...     f += SBIHyperParams(prompt=str(i))
-        ...   StorySquad.batched_selective_renderer(SBIMultiArgs=f, early_stop=10,SBIMA_render_func=lambda x,y:results )
-
-        """
-        import time
-        import numpy as np
-        import PIL
-        images_to_save = {}
-        batch_times = []
-        start_time = time.time()
-        # start by rendering only half of the frames
-        even_SBIM = SBIMultiArgs[::2]
-        odd_SBIM = SBIMultiArgs[1::2]
-
-        tmp_results = StorySquad.batched_renderer(even_SBIM, early_stop, SBIMA_render_func, to_npy=True)
-
-        # now render the other half of the frames if the difference between the two is greater than a threshold
-        threshold = 0.015/2
-        #threshold = 0.0
-        to_process = None
-        # first build a list of the indices of the SBIMultiArgs that need to be rendered based on the difference in the odd frames
-        # need something like [(odd_img_prev,even_idx_now,odd_img_next)]
-        for i in range(1, len(tmp_results) - 1):
-            difference = np.mean(np.square(tmp_results[i] - tmp_results[i+1]))
-            print(difference)
-            if difference > threshold:
-                if to_process is None:
-                    to_process = [(i*2,odd_SBIM[i])]
-                else:
-                    to_process.append((i*2,odd_SBIM[i]))
-        # create the new SBIMultiArgs to render
-        new_SBIM = None
-        time_idxs= []
-        if to_process is not None:
-            print(f'selective renderer found {len(to_process)} frames to process of {int(len(SBIMultiArgs) / 2)} possible frames')
-            for time_idx, sbim in to_process:
-                if new_SBIM is None:
-                    new_SBIM = copy.deepcopy(sbim)
-                    time_idxs.append(time_idx)
-                else:
-                    new_SBIM += copy.deepcopy(sbim)
-                    time_idxs.append(time_idx)
-
-        # render the new SBIMultiArgs
-        ti_sm_res={}
-        if len(time_idxs) > 0:
-            smothing_results = StorySquad.batched_renderer(new_SBIM, early_stop, SBIMA_render_func, to_npy=True)
-            ti_sm_res = dict(zip(time_idxs,smothing_results))
-
-        images_to_save=[]
-        for time_idx in range(len(SBIMultiArgs)):
-            odd = time_idx%2==0
-            even = not odd
-            if even:
-                try:
-                    images_to_save.append(tmp_results[int(time_idx/2)])
-                except:
-                    print(f'error with time_idx {time_idx} and tmp_results {len(tmp_results)}')
-            if odd:
-                if time_idx in ti_sm_res.keys():
-                    images_to_save.append(ti_sm_res[time_idx])
-                else:
-                    try:
-                        images_to_save.append(tmp_results[int(time_idx/2)])
-                    except:
-                        print(f'error with time_idx {time_idx}')
-
-        # convert the images to PIL images
-        images_to_save = [PIL.Image.fromarray(np.uint8(img*255.0)) for img in images_to_save]
-        end_time = time.time()
-        print(f"Time taken: {end_time - start_time}")
-        return images_to_save
-
+        target_mp4_f_path = os.path.join(os.getenv("STORYBOARD_RENDER_PATH") ,f"StoryBoard-{str(random.randint(1,1000000))}.mp4")
+        print (f"target_mp4_f_path: {target_mp4_f_path}")
+        # delete storyboard.mp4
+        os.remove(video_f_path)
+        # delete the audio file
+        os.remove(audio_f_path)
+        # move the mp4 to the storyboard folder using os.renam
+        os.rename(complete_mp4_f_path, target_mp4_f_path)
+        return all_state,target_mp4_f_path
 
     def update_image_exp_text(self, h_params:List[SBIHyperParams]):
         print("update_image_exp_text")
@@ -923,111 +385,23 @@ class StorySquad:
         out_image_exp_params = results.img_hyper_params_list[-9:]
         return results.all_images[-9:], out_image_exp_params[-9:]
 
-    class ExplorerModel:
-        """
-        This is a base class for models that are executed to create new SBMultiSampleArgs given input of a history of
-        user perfeneces and the SBIRenderParams to use. Subclasses should implement the generate_params method
-        """
-
-        # def __init__(self):
-        #    self.sbi_render_params = sbi_render_params
-
-        def __call__(self, *args, **kwargs):
-            return self.generate_params(*args, **kwargs)
-
-        def generate_params(self, render_params: SBIRenderParams, param_history: [SBIHyperParams]) -> SBMultiSampleArgs:
-            raise NotImplementedError
-
-    class SimpleExplorerModel(ExplorerModel):
-        def __init__(self):
-            super().__init__()
-
-        def generate_params(self, render_params: SBIRenderParams, param_history: [SBIHyperParams]) -> SBMultiSampleArgs:
-            #default_hyper_params = SBIHyperParams(
-            #    prompt="",
-            #    seed=-1,
-            #    negative_prompt="",
-            #    cfg_scale=7,
-            #    subseed=-1,
-            #    subseed_strength=0,
-            #    steps=20,
-            #)
-            #base_hyper_params = copy.deepcopy(DEFAULT_HYPER_PARAMS)
-            #base_hyper_params.steps = param_history[-1][0].steps
-            #base_hyper_params.cfg_scale = param_history[-1][0].cfg_scale
-            #base_hyper_params.negative_prompt = param_history[-1][0].negative_prompt
-            base_hyper_params = copy.deepcopy(param_history[-1][0])
-            base_hyper_params.seed=[-1]
-            base_hyper_params.subseed=[-1]
-            base_hyper_params.subseed_strength=[0]
-
-            def simple_param_gen_func(history: [SBIHyperParams],num:int) -> SBIHyperParams:
-                import random
-                # check that history is a valid structure of a list of tubples
-                if not isinstance(history, list):
-                    raise ValueError("history must be a list")
-                if not all([isinstance(h, tuple) for h in history]):
-                    raise ValueError("history must be a list of tuples")
-                if not all([len(h) == 2 for h in history]):
-                    raise ValueError("history must be a list of tuples of length 2")
-
-                print("simple_param_gen_func")
-                noise = 0.33
-
-                unzip = list(zip(*history))
-                params = unzip[0]
-                preferences = unzip[1]
-
-                words_accum = [[i[0], 0, .000001] for i in get_prompt_words_and_weights_list(params[0].prompt)]
-
-                for n_param, pref_for_params in zip(params, preferences):
-                    words_and_weights = get_prompt_words_and_weights_list(n_param.prompt)
-                    for i in range(len(words_and_weights)):
-                        if pref_for_params == 1:
-                            # upvote
-                            words_accum[i][1] += words_and_weights[i][1]
-                            words_accum[i][2] += 1
-                        elif pref_for_params == 2:
-                            # downvote
-                            words_accum[i][1] -= words_and_weights[i][1]
-                            words_accum[i][2] += 1
-                        elif pref_for_params == 3:
-                            # select for story board
-                            words_accum[i][1] += words_and_weights[i][1]
-                            words_accum[i][2] += 1
-                        else:
-                            # no vote
-                            pass
-
-                word_means = [[i[0], i[1] / i[2]] for i in words_accum]
-
-
-                out_params = copy.deepcopy(base_hyper_params)
-                # out_params.prompt = []
-                # out_params.seed = []
-                for idx in range(num):
-                    new_params = copy.deepcopy(base_hyper_params)
-                    # re weight the words based on the mean and generate a new prompt
-                    prompt = ""
-                    for word in word_means:
-                        _noise = (random.random() * noise) - (noise / 2.0)
-                        prompt += f"({word[0]}:{word[1] + _noise}) "
-                    new_params.prompt = prompt.strip()
-                    out_params += new_params
-
-
-
-                return out_params
-
-            hyper_params = simple_param_gen_func(param_history,num=9)[1:]
-            return SBMultiSampleArgs(render_params, hyper_params)
-
     def explore(self, render_params, hyper_params_history, explorer_model: ExplorerModel) -> SBMultiSampleArgs:
         """generates a new set of parameters created by the explorer_model passed in and the history of user preferences
         in hyper_params_history, then returns the new parameters as a SBMultiSampleArgs that can be used to render a new
         set of images for the user to explore"""
         result = explorer_model(render_params, hyper_params_history)
         return result
+
+    def on_preview_audio(self, all_state, *list_for_generate):
+        print("on_preview_audio")
+        if list_for_generate[0]=="":
+            mytext = "Hi, this is an example of converting text to audio. This is a bot speaking here, not a real human!"
+        else:
+            mytext = list_for_generate[0]
+
+        vo = voice_over(mytext, 1, DefaultRender.seconds)
+
+        return (all_state,vo)
 
     def record_and_render(self, all_state, idx, vote_category: int, *ui_param_state):
         # TODO: use this in on_generate
@@ -1037,7 +411,7 @@ class StorySquad:
         all_state["history"].append((cell_params, vote_category))
         render_params = self.get_sb_multi_sample_params_from_ui(ui_param_state).render
         render_params.batch_size = MAX_IEXP_SIZE
-        render_call_args = self.explore(render_params, all_state["history"], self.SimpleExplorerModel())
+        render_call_args = self.explore(render_params, all_state["history"], SimpleExplorerModel())
         image_results, all_state["im_explorer_hparams"] = self.render_explorer(render_call_args)
 
         return all_state, *image_results, *[i.__dict__ for i in all_state["im_explorer_hparams"]]
@@ -1178,6 +552,7 @@ class StorySquad:
         """
         defines the ui for the story squad app, also sets the initial state of the app
         """
+        import gradio as gr
         self.all_components["param_inputs"] = {}
 
         with gr.Blocks() as param_area:
@@ -1219,96 +594,83 @@ class StorySquad:
                     self.ordered_list_of_param_inputs.append(gr.State(MAX_IEXP_SIZE))
                     self.all_components["param_inputs"]["batch_size"] = self.ordered_list_of_param_inputs[-1]
 
-                self.ordered_list_of_param_inputs.append(
-                    gr.Slider(minimum=1.0, maximum=30.0, step=0.5, label='CFG Scale', value=7.0))
-                self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
 
-                # seed, reuse_seed, subseed, reuse_subseed, subseed_strength, seed_resize_from_h, seed_resize_from_w, seed_checkbox
-                self.ordered_list_of_param_inputs.append(self.create_seed_inputs())
+                if DEV_MODE:
+                    self.ordered_list_of_param_inputs.append(
+                        gr.Slider(minimum=1.0, maximum=30.0, step=0.5, label='CFG Scale', value=7.0))
+                    self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
+                    # seed, reuse_seed, subseed, reuse_subseed, subseed_strength, seed_resize_from_h, seed_resize_from_w, seed_checkbox
+                    self.ordered_list_of_param_inputs.append(self.create_seed_inputs())
 
-                self.all_components["param_inputs"]["seed"], \
-                self.all_components["param_inputs"]["reuse_seed"], \
-                self.all_components["param_inputs"]["subseed"], \
-                self.all_components["param_inputs"]["reuse_subseed"], \
-                self.all_components["param_inputs"]["subseed_strength"], \
-                self.all_components["param_inputs"]["seed_resize_from_h"], \
-                self.all_components["param_inputs"]["seed_resize_from_w"], \
-                self.all_components["param_inputs"]["seed_checkbox"] = self.ordered_list_of_param_inputs[-8:]
+                    self.all_components["param_inputs"]["seed"], \
+                    self.all_components["param_inputs"]["reuse_seed"], \
+                    self.all_components["param_inputs"]["subseed"], \
+                    self.all_components["param_inputs"]["reuse_subseed"], \
+                    self.all_components["param_inputs"]["subseed_strength"], \
+                    self.all_components["param_inputs"]["seed_resize_from_h"], \
+                    self.all_components["param_inputs"]["seed_resize_from_w"], \
+                    self.all_components["param_inputs"]["seed_checkbox"] = self.ordered_list_of_param_inputs[-8:]
+                else:
+                    self.ordered_list_of_param_inputs.append(
+                        gr.Slider(minimum=4.0, maximum=10.0, step=0.1, label='Configuration Scale', value=7.0))
+                    self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
+                    self.all_components["param_inputs"]["seed"] = gr.State(DEFAULT_HYPER_PARAMS.seed)
+                    self.all_components["param_inputs"]["subseed"] = gr.State(DEFAULT_HYPER_PARAMS.subseed)
+                    self.all_components["param_inputs"]["subseed_strength"]= gr.State(
+                        DEFAULT_HYPER_PARAMS.subseed_strength)
 
         with gr.Blocks() as story_squad_interface:
             id_part = "storyboard_call_multi"
-
+            label = make_gr_label("StoryBoard by Story Squad")
             with gr.Row(elem_id="toprow"):
-                with gr.Column(scale=6):
-                    with gr.Row():
-                        with gr.Column(scale=80):
-                            with gr.Row():
-                                self.all_components["param_inputs"]["prompt"] = gr.Textbox(label="Prompt",
-                                                                                           elem_id=f"{id_part}_prompt",
-                                                                                           show_label=False,
-                                                                                           lines=2,
-                                                                                           placeholder="Prompt (press Ctrl+Enter or Alt+Enter to generate)"
-                                                                                           )
+                with gr.Column(scale=80):
+                    self.all_components["param_inputs"]["prompt"] = gr.Textbox(label="Prompt",
+                                                                               #elem_id=f"{id_part}_prompt",
+                                                                               show_label=False,
+                                                                               lines=5,
+                                                                               placeholder="Prompt"
+                                                                               )
 
-                    with gr.Row():
-                        with gr.Column(scale=80):
-                            with gr.Row():
-                                self.all_components["param_inputs"]["negative_prompt"] = gr.Textbox(
-                                    label="Negative prompt",
-                                    elem_id=f"{id_part}_neg_prompt",
-                                    show_label=False,
-                                    lines=2,
-                                    placeholder="Negative prompt (press Ctrl+Enter or Alt+Enter to generate)"
-                                )
-
-                with gr.Column(scale=1, elem_id="roll_col", visible=False):
-                    roll = gr.Button(value="R", elem_id="roll", visible=False)
-                    paste = gr.Button(value="P", elem_id="paste", visible=False)
-                    save_style = gr.Button(value="S", elem_id="style_create", visible=False)
-                    prompt_style_apply = gr.Button(value="A", elem_id="style_apply", visible=False)
-
-                    token_counter = gr.HTML(value="<span></span>", elem_id=f"{id_part}_token_counter")
-                    token_button = gr.Button(visible=False, elem_id=f"{id_part}_token_button")
-
-                button_interrogate = None
-                button_deepbooru = None
+                    self.all_components["param_inputs"]["negative_prompt"] = gr.Textbox(
+                        label="Negative prompt",
+                        elem_id=f"{id_part}_neg_prompt",
+                        show_label=False,
+                        lines=1,
+                        placeholder="Negative prompt"
+                    )
+                    param_area.render()
 
                 with gr.Column(scale=1):
-                    with gr.Row():
-                        self.all_components["submit"] = gr.Button('Generate', elem_id=f"{id_part}_generate",
-                                                                  variant='primary')
-                    with gr.Row():
-                        with gr.Column(scale=1, elem_id="style_pos_col"):
-                            prompt_style = gr.State("None")
-                        with gr.Column(scale=1, elem_id="style_neg_col"):
-                            prompt_style2 = gr.State("None")
-                    with gr.Row():
-                        # create some empty space padding with gr.HTML
-                        gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
-                    with gr.Row():
-                        self.all_components["render"] = gr.Button('Render', elem_id=f"{id_part}_render",
-                                                                  variant='primary')
-                    with gr.Row():
-                        self.all_components["benchmark"] = gr.Button('Benchmark', elem_id=f"{id_part}_render",
-                                                          variant='primary')
-            with gr.Column():
-                label = make_gr_label("StoryBoard by Story Squad")
-                with gr.Row(scale=1):
-                    with gr.Column():
-                        param_area.render()
+                    with gr.Box():
+                        with gr.Column(scale=1):
+                            gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
 
+                            self.all_components["submit"] = gr.Button('Generate', elem_id=f"{id_part}_generate",
+                                                                          variant='primary')
+
+                            gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
+
+                            self.all_components["render"] = gr.Button('Render', elem_id=f"{id_part}_render",
+                                                                          variant='primary')
+                            gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
+
+                            self.all_components["benchmark"] = gr.Button('Benchmark',
+                                                                  variant='primary')
+                            gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
+
+                            self.all_components["on_preview_audio"] = gr.Button('Preview Audio')
+                            gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
+
+            with gr.Column():
                 gr.HTML("<hr>")
                 gr.update()
                 with gr.Row(scale=1, variant="panel", elem_id="changeme"):  # story board
                     with gr.Column():
                         make_gr_label("StoryBoard")
                         with gr.Row(label="StoryBoard", scale=1):
-                            image1 = gr.Image(label="Image 1")
-                            image2 = gr.Image(label="Image 2")
-                            image3 = gr.Image(label="Image 3")
-                            # self.all_components["story_board_image1"] = image1
-                            # self.all_components["story_board_image2"] = image2
-                            # self.all_components["story_board_image3"] = image3
+                            image1 = gr.Image(label="position 1", interactive=False)
+                            image2 = gr.Image(label="position 2", interactive=False)
+                            image3 = gr.Image(label="position 3", interactive=False)
                             self.all_components["story_board_images"] = [image1, image2, image3]
 
                 gr.HTML("<hr>")
@@ -1325,20 +687,21 @@ class StorySquad:
 
                 with gr.Row(scale=1) as movie_result:
                     self.all_components["story_board_render"] = gr.Video()
+                    self.all_components["story_board_audio"] = gr.Audio()
 
         return story_squad_interface
 
     def setup_story_board_events(self):
+        import gradio as gr
         """
-        Setup the events for the story board using self.all_components that was initialized in __init__ which called
+        Setup the events for the story board using self.all_components that was initialized in __init__
         which called this function.
         """
         self.all_components["param_inputs"]["list_for_generate"] = \
             [self.all_components["param_inputs"][k] for k in
              keys_for_ui_in_order]
-        self.all_components["render"].click(self.render_storyboard,
-                                            inputs=[gr.State(DefaultRender.num_frames_per_sctn),
-                                                    gr.State(DefaultRender.early_stop_seconds),
+        self.all_components["render"].click(self.on_render_storyboard,
+                                            inputs=[gr.State(DefaultRender.early_stop_seconds),
                                                     self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]
                                                     ],
@@ -1360,17 +723,24 @@ class StorySquad:
                                                     ],
                                             outputs=[self.all_state, self.all_components["story_board_render"]]
                                             )
+        self.all_components["on_preview_audio"].click(self.on_preview_audio,
+                                                   inputs=[self.all_state,
+                                                    *self.all_components["param_inputs"]["list_for_generate"]
+                                                    ],
+                                                   outputs=[self.all_state, self.all_components["story_board_audio"]]
+                                                   )
+
         # create the events for the image explorer, buttons, and text boxes
         cur_img_idx = 0
         while True:
             # cur_img = self.all_state["im_explorer"]["images"][cur_img_idx]
             but_idx_base = cur_img_idx * 3
             but_up = [b for b in self.all_components["im_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
-                      "up" in b.label.lower()][0]
+                      "up" in b.value.lower()][0]
             but_use = [b for b in self.all_components["im_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
-                       "use" in b.label.lower()][0]
+                       "use" in b.value.lower()][0]
             but_down = [b for b in self.all_components["im_explorer"]["buttons"][but_idx_base:but_idx_base + 3] if
-                        "down" in b.label.lower()][0]
+                        "down" in b.value.lower()][0]
 
             but_up.click(self.on_upvote,
                          inputs=[gr.State(cur_img_idx),
@@ -1405,6 +775,7 @@ class StorySquad:
             if cur_img_idx >= 9: break
 
     def create_img_exp_group(self):
+        import gradio as gr
         gr_comps = self.all_components
         if "im_explorer" not in gr_comps:
             gr_comps["im_explorer"] = OrderedDict()
@@ -1417,19 +788,68 @@ class StorySquad:
         gr_comps["im_explorer"]["images"].append(img)
 
         with gr.Row():
-            with gr.Group():
-                but = gr.Button(f"Up", label="Up")
-                gr_comps["im_explorer"]["buttons"].append(but)
+            #with gr.Group(equal_width=True):
+            but = gr.Button(f"Up vote")
+            gr_comps["im_explorer"]["buttons"].append(but)
 
-                but = gr.Button(f"Use", label="Use")
-                gr_comps["im_explorer"]["buttons"].append(but)
+            but = gr.Button(f"Use in storyboard")
+            gr_comps["im_explorer"]["buttons"].append(but)
 
-                but = gr.Button(f"Down", label="Down")
-                gr_comps["im_explorer"]["buttons"].append(but)
+            but = gr.Button(f"Down vote")
+            gr_comps["im_explorer"]["buttons"].append(but)
+            if not DEV_MODE:
+                but.visible = False
 
         text = gr.Textbox(show_label=False, max_lines=3, interactive=False)
+        if not DEV_MODE:
+            text.visible = False
 
         gr_comps["im_explorer"]["texts"].append(text)
+
+
+class StorySquadExtra(StoryBoard):
+
+    @staticmethod
+    def dict_to_all_state(new_state: dict,all_state={}):
+        # update the all_state dict with the new values
+        for key, value in new_state.items():
+            all_state[key] = []
+            if key =="history":
+                for t in value:
+                    sbh= SBIHyperParams(**t[0])
+                    vote = t[1]
+                    all_state[key].append((sbh,vote))
+            elif key == "im_explorer_hparams":
+                for data in value:
+                    all_state[key].append(SBIHyperParams(**data))
+            elif key == "story_board":
+                for data in value:
+                    all_state[key].append(SBIHyperParams(**data))
+            else:
+                all_state[key] = value
+        return all_state
+    def all_state_to_dict(self,all_state):
+
+        o = "{"
+        for sk, sv in all_state.items():
+            o = o + f'"{sk}":'
+            o = o + f'['
+            for li in sv:
+                if type(li) == tuple:
+                    o = o + f'{(li[0].__dict__, li[1])},'
+                else:
+                    o = o + f'{li.__dict__},'
+            o = o + "],"
+        o = o + "}"
+        return o
+    def all_state_to_json(self,all_state):
+        return json.dumps(self.all_state_to_dict(all_state))
+    @staticmethod
+    def load_last_state():
+        # load the last state
+        with open("last_state.json", "r") as f:
+            last_state = json.load(f)
+        return StorySquad.dict_to_all_state(last_state)
 
 
 if __name__ == '__main__':
@@ -1440,4 +860,4 @@ if __name__ == '__main__':
     from typing import List
     from collections import OrderedDict
 
-    doctest.run_docstring_examples(StorySquad.render_storyboard, globals(), verbose=True)
+    doctest.run_docstring_examples(StorySquad.on_render_storyboard, globals(), verbose=True)

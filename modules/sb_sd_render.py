@@ -3,7 +3,7 @@ import modules.shared as shared
 from modules.processing import StableDiffusionProcessingTxt2Img, \
     process_images
 from modules.shared import opts, cmd_opts
-from modules.story_squad import SBMultiSampleArgs, SBImageResults
+from modules.storyboard.rendering import SBMultiSampleArgs, SBImageResults
 
 
 def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleArgs):
