@@ -3,7 +3,7 @@ import modules.shared as shared
 from modules.processing import StableDiffusionProcessingTxt2Img, \
     process_images
 from modules.shared import opts, cmd_opts
-from modules.storyboard.rendering import SBMultiSampleArgs, SBImageResults
+from .sb_rendering import SBMultiSampleArgs, SBImageResults
 
 
 def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleArgs):
@@ -39,7 +39,7 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
         negative_prompt=negative_prompt if type(negative_prompt) is not list else negative_prompt[0],
         seed=seed,
         subseed=subseed,
-        subseed_strength=subseed_strength, # if type(subseed_strength) is not list else subseed_strength[0],
+        subseed_strength=subseed_strength,  # if type(subseed_strength) is not list else subseed_strength[0],
         sampler_index=sampler_index if type(sampler_index) is not list else sampler_index[0],
         batch_size=batch_size if type(batch_size) is not list else batch_size[0],
         n_iter=1,
@@ -51,11 +51,9 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
         tiling=tiling if type(tiling) is not list else tiling[0],
         seed_enable_extras=True
     )
-
+    if isinstance(tmp.prompt, str):
+        tmp.prompt = [tmp.prompt]
     return tmp
-
-
-
 
 
 def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImageResults:
@@ -80,8 +78,8 @@ def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImage
         processed.images = []
     sb_results = SBImageResults(
         processed=processed,
-        #generation_info_js=generation_info_js,
-        #generation_info_html=plaintext_to_html(generation_info_js)
+        # generation_info_js=generation_info_js,
+        # generation_info_html=plaintext_to_html(generation_info_js)
     )
 
     return sb_results

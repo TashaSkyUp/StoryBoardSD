@@ -1,11 +1,12 @@
-import os
-
+from .sb_sd_render import *
+import modules.storysquad_storyboard.env as sb_env
 import gradio.components
 import json
-from modules.storyboard.rendering import create_voice_over_for_storyboard as voice_over, make_mp4_from_images, \
-    get_frame_values_for_prompt_word_weights, get_frame_seed_data, get_prompt_words_and_weights_list, DefaultRender, \
-    MAX_BATCH_SIZE, batched_selective_renderer, SBMultiSampleArgs, SBIHyperParams, SBIRenderParams, SBImageResults, \
-    DEFAULT_HYPER_PARAMS, DEV_HYPER_PARAMS
+
+from .storyboard import DEFAULT_HYPER_PARAMS
+
+from .sb_rendering import *
+
 from dataclasses import dataclass
 
 print(__name__)
@@ -14,7 +15,7 @@ from typing import List
 keys_for_ui_in_order = ["prompt", "negative_prompt", "steps", "sampler_index", "width", "height", "restore_faces",
                          "tiling", "batch_count", "batch_size",
                          "seed", "subseed", "subseed_strength", "cfg_scale"]
-DEV_MODE = True
+DEV_MODE = False
 # TODO: consider adding a feature to render more results than the Image explorer can show at one time
 MAX_IEXP_SIZE = 9
 
@@ -65,10 +66,7 @@ class ExplorerModel:
 
 class SimpleExplorerModel(ExplorerModel):
     """
-    >>> if True:
-    ...  history =[ (i,1) for i in get_test_storyboard()]
-    ...  SimpleExplorerModel().generate_params(SBIRenderParams(),history)
-    [SBIHyperParams()]
+
     """
     def __init__(self):
         super().__init__()
@@ -156,14 +154,18 @@ def get_test_storyboard():
     ) for i, prompt in enumerate(test_data)]
     return storyboard_params
 
-class StoryBoard:
+
+class StoryBoardGradio:
     def __init__(self):
         import gradio as gr
+
+        self.DefaultRender = DefaultRender()
+
         # import some functionality from the provided webui
         from modules.ui import setup_progressbar, create_seed_inputs
 
         # import custom sampler caller and assign it to be easy to access
-        from modules.sb_sd_render import storyboard_call_multi as storyboardtmp
+        from .sb_sd_render import storyboard_call_multi as storyboardtmp
         self.storyboard = storyboardtmp
 
         # assign imported functionality to be easy to access
@@ -257,13 +259,11 @@ class StoryBoard:
             os.system(f"mv {mp4_at_steps[str(steps)]} {mp4_path}.mp4")
         return [all_state,""]
 
-    def on_render_storyboard(self, early_stop: float = 3, *args):
+    def compose_storyboard_render_new(self, all_state, early_stop, storyboard_params, test,
+                                  test_render, ui_params):
+        pass
+    def on_render_storyboard_dev(self, early_stop: float = 3, *args):
         """
-        >>> StorySquad.on_render_storyboard([CallArgsAsData(prompt= "(dog:1) cat:0",seed=1),CallArgsAsData(prompt= "(dog:1) cat:1",seed=2),CallArgsAsData(prompt= "(dog:0) cat:1",seed=3)])
-        render_storyboard
-        ()
-        test
-        [prompt: (dog:1.0) (cat:0.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 1,subseed: 2,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0, prompt: (dog:1.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 0.0, prompt: (dog:0.0) (cat:1.0),negative_prompt: None,steps: None,sampler_index: None,width: None,height: None,restore_faces: None,tiling: None,batch_count: None,batch_size: None,seed: 2,subseed: 3,subseed_strength: None,cfg_scale: None,sub_seed_weight: 1.0]
         """
         print("on_render_storyboard")
 
@@ -284,90 +284,48 @@ class StoryBoard:
             ui_params = args[1:]
 
 
-        all_state, complete_mp4_f_path = self.compose_storyboard_render(all_state, early_stop,
-                                                                        storyboard_params, test, test_render, ui_params)
+        complete_mp4_f_path = compose_storyboard_render_dev(self.DefaultRender,
+                                                                   storyboard_params,
+                                                                   ui_params,
+                                                                   self.storyboard,
+                                                                   test,
+                                                                   early_stop,
+                                                                   )
         return [all_state,complete_mp4_f_path]
 
-    def compose_storyboard_render(self, all_state, early_stop, storyboard_params, test,
-                                  test_render, ui_params):
+    def on_render_storyboard(self, early_stop: float = 3, *args):
+        """
+        """
+        print("on_render_storyboard")
 
-        # in the interest of syncing the length of the audio voice over and the length of the video it is important to
-        # consider the length of the audio first, primarily because the audio is much quicker to render, but also
-        # because it is harder to manipulate temporaly then the mostly arbitrary contents of the video
+        all_state = args[0]
+        ui_params = args[1:]
 
-        # the audio is rendered first, attempting to reach some target lenght.
-        # the video is rendered second, to match the length of the resultant audio
+        storyboard_params = all_state["story_board"]
+        test_render = False
+        if all(map(lambda x: x is None, storyboard_params) or len(storyboard_params) == 0):
+            """Test that is ran when the storyboard_params are not set but the user presses the render button"""
+            test = True
+            test_render = True
+            storyboard_params = get_test_storyboard()
 
-        import modules.storyboard.rendering as rendering
-        my_render_params =  rendering.DefaultRender()
-        mytext = ui_params[0]
-        if test or test_render:
-            mytext = "one two three four five six seven eight nine ten"
-        audio_f_path, vo_len_secs = voice_over(mytext, 1, DefaultRender.seconds)
-
-        my_render_params.num_frames_per_section = int((my_render_params.fps * vo_len_secs) / my_render_params.sections)
-        my_render_params.num_frames = my_render_params.num_frames_per_section * my_render_params.sections
-        my_render_params.seconds = vo_len_secs
-        if my_render_params.num_frames < my_render_params.min_frames_per_render:
-            my_render_params.num_frames = my_render_params.min_frames_per_render
-            my_render_params.fps = my_render_params.num_frames/my_render_params.seconds
-            my_render_params.frames_per_section = int(my_render_params.num_frames/my_render_params.sections)
         else:
-            use_fps = my_render_params.fps
+            test = False
+            storyboard_params = all_state["story_board"]
+            ui_params = args[1:]
 
-        prompt_sections = get_frame_values_for_prompt_word_weights(
-            [params.prompt for params in storyboard_params],
-            num_frames=my_render_params.num_frames_per_section
-        )
-        #  turn the weights into a list of prompts
-        prompts = []
-        for section in prompt_sections:
-            for frame in section:
-                prompts.append(" ".join([f"({word}:{weight})" for word, weight in frame]))
-        seeds = get_frame_seed_data(storyboard_params, my_render_params.num_frames_per_section)
-        # create a base SBIRenderArgs object
-        # feature: this should allow the user to change the settings for rendering
-        base_SBIMulti = self.get_sb_multi_sample_params_from_ui(ui_params)
-        base_Hyper = copy.deepcopy(base_SBIMulti.hyper)
-        # turn the list of prompts and seeds into a list of CallArgsAsData using the base_params as a template
-        # populate the storyboard_call_multi with the prompts and seeds
-        for prompt, seed in zip(prompts, seeds):
-            base_SBIMulti += SBIHyperParams(
-                prompt=prompt,
-                seed=seed[0],
-                subseed=seed[1],
-                subseed_strength=seed[2],
-                negative_prompt=base_Hyper.negative_prompt,
-                steps=base_Hyper.steps,
-                cfg_scale=base_Hyper.cfg_scale,
-            )
 
-        if not test or test_render:
-            # images_to_save = self.batched_renderer(base_SBIMulti, early_stop, self.storyboard)
-            images_to_save = batched_selective_renderer(base_SBIMulti,
-                                                        rparam=my_render_params,
-                                                        early_stop=early_stop,
-                                                        SBIMA_render_func=self.storyboard)
-
-        working_dir = os.path.join(os.getenv("STORYBOARD_RENDER_PATH") ,"tmp")
-        print(f'working_dir: {working_dir}')
-        print(f'audio_f_path: {audio_f_path}')
-        video_f_path = make_mp4_from_images(images_to_save,
-                                                working_dir,
-                                                "video.mp4", 512, 512, False, fps=DefaultRender.fps)
-        print(f'video_f_path: {video_f_path}')
-
-        complete_mp4_f_path = rendering.join_video_audio(video_f_path, audio_f_path)
-
-        target_mp4_f_path = os.path.join(os.getenv("STORYBOARD_RENDER_PATH") ,f"StoryBoard-{str(random.randint(1,1000000))}.mp4")
-        print (f"target_mp4_f_path: {target_mp4_f_path}")
-        # delete storyboard.mp4
-        os.remove(video_f_path)
-        # delete the audio file
-        os.remove(audio_f_path)
-        # move the mp4 to the storyboard folder using os.renam
-        os.rename(complete_mp4_f_path, target_mp4_f_path)
-        return all_state,target_mp4_f_path
+        all_state, complete_mp4_f_path = compose_storyboard_render(self.DefaultRender,
+                                                                   all_state,
+                                                                   early_stop,
+                                                                   storyboard_params,
+                                                                   test,
+                                                                   test_render,
+                                                                   ui_params,
+                                                                   SBIMA_render_func=storyboard_call_multi,
+                                                                   base_SBIMulti=self.get_sb_multi_sample_params_from_ui(ui_params)
+                                                                   )
+        return [all_state,complete_mp4_f_path]
 
     def update_image_exp_text(self, h_params:List[SBIHyperParams]):
         print("update_image_exp_text")
@@ -399,7 +357,7 @@ class StoryBoard:
         else:
             mytext = list_for_generate[0]
 
-        vo = voice_over(mytext, 1, DefaultRender.seconds)
+        vo,vo_len_sec = create_voice_over_for_storyboard(mytext, 1, DefaultRender.seconds)
 
         return (all_state,vo)
 
@@ -505,6 +463,8 @@ class StoryBoard:
             out_sb_image_hyper_params = []
 
             def random_pompt_word_weights(prompt_to_randomize: str):
+                from  modules.storysquad_storyboard.storyboard import _get_noun_list
+                noun_list = _get_noun_list()
                 # if the prompt is a list not a string fix it
                 if isinstance(prompt_to_randomize, list) and len(prompt_to_randomize) == 1:
                     prompt_to_randomize = prompt_to_randomize[0]
@@ -513,6 +473,9 @@ class StoryBoard:
 
                 if prompt_to_randomize == "" or prompt_to_randomize is None:
                     prompt_to_randomize = "this is a test prompt that jumped over a lazy dog and then ran away"
+
+                prompt_to_randomize = prompt_to_randomize.split(" ")
+                prompt_to_randomize = ' '.join([w for w in prompt_to_randomize if w in noun_list])
 
                 words, weights = zip(*get_prompt_words_and_weights_list(prompt_to_randomize))
                 weights = [(random.random() - .5) + w for w in weights]
@@ -621,7 +584,7 @@ class StoryBoard:
 
         with gr.Blocks() as story_squad_interface:
             id_part = "storyboard_call_multi"
-            label = make_gr_label("StoryBoard by Story Squad")
+            label = make_gr_label("StoryBoardGradio by Story Squad")
             with gr.Row(elem_id="toprow"):
                 with gr.Column(scale=80):
                     self.all_components["param_inputs"]["prompt"] = gr.Textbox(label="Prompt",
@@ -654,6 +617,10 @@ class StoryBoard:
                                                                           variant='primary')
                             gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
 
+                            self.all_components["dev_render"] = gr.Button('Dev Render', elem_id=f"{id_part}_dev_render")
+
+                            gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
+
                             self.all_components["benchmark"] = gr.Button('Benchmark',
                                                                   variant='primary')
                             gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
@@ -666,8 +633,8 @@ class StoryBoard:
                 gr.update()
                 with gr.Row(scale=1, variant="panel", elem_id="changeme"):  # story board
                     with gr.Column():
-                        make_gr_label("StoryBoard")
-                        with gr.Row(label="StoryBoard", scale=1):
+                        make_gr_label("StoryBoardGradio")
+                        with gr.Row(label="StoryBoardGradio", scale=1):
                             image1 = gr.Image(label="position 1", interactive=False)
                             image2 = gr.Image(label="position 2", interactive=False)
                             image3 = gr.Image(label="position 3", interactive=False)
@@ -676,18 +643,30 @@ class StoryBoard:
                 gr.HTML("<hr>")
                 make_gr_label("Parameter Explorer")
 
-                with gr.Row(scale=1) as image_exolorer:
-                    with gr.Blocks():
-                        for r in range(3):
-                            with gr.Row(equal_height=True):
-                                for c in range(3):
-                                    with gr.Column(equal_width=True):
-                                        with gr.Group():
-                                            self.create_img_exp_group()
+                def get_files_at_path(path=None) -> list[str]:
+                    # Get a list of files in the root directory
+                    root_files = [os.path.join(path,f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+                    return root_files
 
-                with gr.Row(scale=1) as movie_result:
-                    self.all_components["story_board_render"] = gr.Video()
-                    self.all_components["story_board_audio"] = gr.Audio()
+
+                with gr.Tabs() as tabs:
+                    with gr.Tab("Interface"):
+                        with gr.Row(scale=1) as image_exolorer:
+                            with gr.Blocks():
+                                for r in range(3):
+                                    with gr.Row(equal_height=True):
+                                        for c in range(3):
+                                            with gr.Column(equal_width=True):
+                                                with gr.Group():
+                                                    self.create_img_exp_group()
+
+                        with gr.Row(scale=1) as movie_result:
+                            self.all_components["story_board_render"] = gr.Video()
+                            self.all_components["story_board_audio"] = gr.Audio()
+
+                    with gr.Tab("Files"):
+                        with gr.Column():
+                            files = gr.Files(get_files_at_path(sb_env.STORYBOARD_RENDER_PATH), label="Files")
 
         return story_squad_interface
 
@@ -707,7 +686,13 @@ class StoryBoard:
                                                     ],
                                             outputs=[self.all_state, self.all_components["story_board_render"]]
                                             )
-
+        self.all_components["dev_render"].click(self.on_render_storyboard_dev,
+                                            inputs=[gr.State(DefaultRender.early_stop_seconds),
+                                                    self.all_state,
+                                                    *self.all_components["param_inputs"]["list_for_generate"]
+                                                    ],
+                                            outputs=[self.all_state, self.all_components["story_board_render"]]
+                                            )
         self.all_components["submit"].click(self.on_generate,
                                             inputs=[self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]],
@@ -807,7 +792,7 @@ class StoryBoard:
         gr_comps["im_explorer"]["texts"].append(text)
 
 
-class StorySquadExtra(StoryBoard):
+class StorySquadExtraGradio(StoryBoardGradio):
 
     @staticmethod
     def dict_to_all_state(new_state: dict,all_state={}):
@@ -849,7 +834,7 @@ class StorySquadExtra(StoryBoard):
         # load the last state
         with open("last_state.json", "r") as f:
             last_state = json.load(f)
-        return StorySquad.dict_to_all_state(last_state)
+        return StorySquadExtraGradio.dict_to_all_state(last_state)
 
 
 if __name__ == '__main__':
@@ -860,4 +845,4 @@ if __name__ == '__main__':
     from typing import List
     from collections import OrderedDict
 
-    doctest.run_docstring_examples(StorySquad.on_render_storyboard, globals(), verbose=True)
+    doctest.run_docstring_examples(StorySquadExtraGradio.on_render_storyboard, globals(), verbose=True)

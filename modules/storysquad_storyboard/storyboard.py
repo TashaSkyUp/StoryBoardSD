@@ -1,0 +1,470 @@
+import json
+import numpy as np
+import os
+
+from dataclasses import dataclass
+from typing import List, Any
+
+DEV_MODE = os.getenv("SB_DEV_MODE", False)
+DEFAULT_HYPER_PARAMS = {
+    "prompt": "",
+    "negative_prompt": "",
+    "steps": 8,
+    "seed": 0,
+    "subseed": 0,
+    "subseed_strength": 0,
+    "cfg_scale": 7,
+}
+
+
+@dataclass
+class DEFAULT_HYPER_PARAMS:
+    prompt: str = DEFAULT_HYPER_PARAMS["prompt"]
+    negative_prompt: str = DEFAULT_HYPER_PARAMS["negative_prompt"]
+    steps: int = DEFAULT_HYPER_PARAMS["steps"]
+    seed: int = DEFAULT_HYPER_PARAMS["seed"]
+    subseed: int = DEFAULT_HYPER_PARAMS["subseed"]
+    subseed_strength: int = DEFAULT_HYPER_PARAMS["subseed_strength"]
+    cfg_scale: int = DEFAULT_HYPER_PARAMS["cfg_scale"]
+
+
+DEV_HYPER_PARAMS = DEFAULT_HYPER_PARAMS(steps=1)
+
+DEFAULT_HYPER_PARAMS = DEV_HYPER_PARAMS
+
+# DEV_HYPER_PARAMS["steps"] = 1
+
+if DEV_MODE:
+    pass
+
+
+class SBIHyperParams:
+    """
+    the idea with this class is to provide a useful interface for the user to set,add,index the hyper parameters
+    """
+
+    def __init__(self, negative_prompt=DEFAULT_HYPER_PARAMS.negative_prompt,
+                 steps=DEFAULT_HYPER_PARAMS.steps,
+                 seed=DEFAULT_HYPER_PARAMS.seed,
+                 subseed=DEFAULT_HYPER_PARAMS.subseed,
+                 subseed_strength=DEFAULT_HYPER_PARAMS.subseed_strength,
+                 cfg_scale=DEFAULT_HYPER_PARAMS.cfg_scale,
+                 prompt=DEFAULT_HYPER_PARAMS.prompt,
+                 **kwargs):
+        # this just ensures that all the params are lists
+
+        # If prompt was not passed via init, then check kwargs, else raise value error
+        # this is so that the prompt can be passed as a positional argument or a keyword argument
+        # so that the class can be created by unpacking the dictionary of this object
+        if prompt is None:
+            if "_prompt" in kwargs:
+                _prompt = kwargs["_prompt"]
+            else:
+                raise ValueError("prompt is required")
+        else:
+            _prompt = prompt
+
+        self._prompt = self._make_list(_prompt)
+        self.negative_prompt = self._make_list(negative_prompt)
+        self.steps = self._make_list(steps)
+        self.seed = self._make_list(seed)
+        self.subseed = self._make_list(subseed)
+        self.subseed_strength = self._make_list(subseed_strength)
+        self.cfg_scale = self._make_list(cfg_scale)
+
+    def __getitem__(self, item):
+        return SBIHyperParams(prompt=self._prompt[item], negative_prompt=self.negative_prompt[item],
+                              steps=self.steps[item], seed=self.seed[item], subseed=self.subseed[item],
+                              subseed_strength=self.subseed_strength[item], cfg_scale=self.cfg_scale[item])
+
+    def _make_list(self, item: object) -> [object]:
+        if isinstance(item, list):
+            return item
+        else:
+            return [item]
+
+    def __add__(self, other):
+        # this allows this class to be used to append to itself
+        if isinstance(other, SBIHyperParams):
+            return SBIHyperParams(
+                prompt=self._prompt + other._prompt,
+                negative_prompt=self.negative_prompt + other.negative_prompt,
+                steps=self.steps + other.steps,
+                seed=self.seed + other.seed,
+                subseed=self.subseed + other.subseed,
+                subseed_strength=self.subseed_strength + other.subseed_strength,
+                cfg_scale=self.cfg_scale + other.cfg_scale,
+            )
+
+    @property
+    def prompt(self):
+        # if there is only one prompt then return it as a string
+        if len(self._prompt) == 1:
+            return self._prompt[0]
+        else:
+            return self._prompt
+
+    @prompt.setter
+    def prompt(self, value):
+        self._prompt = self._make_list(value)
+
+    def __json__(self):
+        # serialize the object to a json string
+        return json.dumps(self.__dict__)
+
+    def __str__(self):
+        return self.__json__()
+
+
+def get_frame_seed_data(board_params, _num_frames) -> [()]:  # List[(seed,subseed,weight)]
+    """
+    interpolation between seeds is done by setting the subseed to the target seed of the next section, and then
+    interpolating the subseed weight from 0  to 1
+    """
+    sections = [
+        [board_params[0], board_params[1]],
+        [board_params[1], board_params[2]],
+    ]
+    all_frames = []
+    for start, end in sections:
+        seed = start.seed
+        subseed = end.seed
+        for i in range(_num_frames):
+            sub_seed_weight = i / (_num_frames - 1)
+            all_frames.append((seed, subseed, sub_seed_weight))
+    return all_frames
+
+
+def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
+    """
+    >>> get_prompt_words_and_weights_list("hello:1 world:.2 how are (you:1.0)")
+    [('hello', 1.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
+    """
+    prompt = sanitize_prompt(prompt)
+    words = prompt.split(" ")
+    possible_word_weight_pairs = [i.split(":") for i in words]
+    w = 1.0
+    out: list[tuple[Any, float]] = []
+    for word_weight_pair in possible_word_weight_pairs:
+        value_count = len(word_weight_pair)  # number of values in the tuple
+        # if the length of the item that is possibly a word weight pair is 1 then it is just a word
+        if value_count == 1:  # when there is no weight assigned to the word
+            w = 1.0
+        # if the length of the item that is possibly a word weight pair is 2 then it is a word and a weight
+        elif value_count == 2:  # then there is a word and probably a weight in the tuple
+            # if the second item in the word weight pair is a float then it is a weight
+            try:
+                w = float(word_weight_pair[1])
+            # if the second item in the word weight pair is not a float then it is not a weight
+            except ValueError:
+                raise ValueError(f"Could not convert {word_weight_pair[1]} to a float")
+        else:
+            raise ValueError(f"Could not convert {word_weight_pair} to a word weight pair")
+        out.append((word_weight_pair[0], w))
+    return out
+
+
+def sanitize_prompt(prompt):
+    prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
+    prompt = prompt.replace("\n", " ")
+    prompt = prompt.replace("\r", " ")
+    prompt = prompt.replace("[", " ").replace("]", " ")
+    prompt = prompt.replace("{", " ").replace("}", " ")
+    # compact blankspace
+    for i in range(10):
+        prompt = prompt.replace("  ", " ")
+
+    prompt = prompt.replace("(", "").replace(")", "")
+    return prompt.strip()
+
+
+from typing import List, Tuple
+
+
+def _get_noun_list() -> list[str]:
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    with open("nounlist.csv", 'r') as f:
+        noun_list = f.read().splitlines()
+    return noun_list
+
+class StoryBoardPrompt:
+    """
+    A prompt for storyboard consists of all the words for every section of the storyboard, and a function to sample
+    each words weight as some percentage of completion for that section. for instance if we want a story board of a dog
+    transforming into a cat, we might have a prompt like this:
+
+    ["dog :1 cat:0.0",
+    "dog :1. cat:1.0",
+    "dog :0. cat: 1"]
+
+    notice that each section has the same words, but the weights for each word are different.
+    the first section has a weight of 1 for dog, and 0 for cat
+    the second section has a weight of 1 for dog, and 1 for cat
+    the third section has a weight of 0 for dog, and 1 for cat
+
+    this provides a way to render the prompt attribute of a story board at a specified point in time
+
+    >>> try:
+    ...     SB = StoryBoardPrompt("doctests", [.5,.5])
+    ...     SB._get_prompt_at_time(0.5)
+    ... except Exception as e:
+    ...     print(e)
+    'dog:1.0 cat:1.0'
+    """
+
+
+
+    def __init__(self, prompts: List[str] or str, seconds_lengths: List[float],use_only_nouns=False):
+        # change the working directory to the directory this module is in
+        #os.chdir(os.path.dirname(os.path.abspath(__file__)))
+        #with open("nounlist.csv", 'r') as f:
+            #self.noun_list = f.read().splitlines()
+        self.noun_list = _get_noun_list()
+
+        self._prompts = prompts
+        if isinstance(seconds_lengths, list):
+            self.seconds_lengths = seconds_lengths
+            self.total_seconds = sum(seconds_lengths)
+        elif isinstance(seconds_lengths, float):
+            secs_per_prompt = seconds_lengths / (len(prompts) - 1)
+            self.seconds_lengths = [secs_per_prompt] * (len(prompts) - 1)
+            self.total_seconds = seconds_lengths
+
+        self._testing_dirty_prompts = [
+            "dog :1 cat:0.0",
+            "dog :1. cat:1.0",
+            "dog :0. cat: 1",
+        ]
+        self._times_sections_start = [sum(self.seconds_lengths[:i]) for i in range(len(self.seconds_lengths))]
+
+        if prompts == "doctests":
+            self._prompts = self._testing_dirty_prompts
+
+        self._sanitized_prompts = [self._sanitize_prompt(p) for p in self._prompts]
+
+        self._words_and_weights = [self._get_prompt_words_and_weights_list(p) for p in
+                                   self._sanitized_prompts]
+        if use_only_nouns:
+            self._words_and_weights = [self._get_nouns_only(p) for p in self._words_and_weights]
+
+        self._sections = self._get_sections(self._words_and_weights)
+
+        self._frame_values = self._get_frame_values_for_prompt_word_weights(self._sections, 4)
+
+        self._words = [w[0] for w in self._words_and_weights[0]]
+
+
+
+
+    def __call__(self, *args, **kwargs) -> [str]:
+        # if args is a single float, then we are getting the prompt at a specific point in time
+        # if args is a list of floats, then we are getting the prompt at a list of points in time
+        try:
+            if type(args[0]) is float:
+                return [self._get_prompt_at_time(args[0])]
+            elif isinstance(args[0],np.floating):
+                return [self._get_prompt_at_time(args[0])]
+            elif type(args[0]) is list:
+                return [self._get_prompt_at_time(t) for t in args[0]]
+            else:
+                raise TypeError("args must be a float or a list of floats")
+        except IndexError:
+            raise TypeError("args must be a float or a list of floats")
+
+    @staticmethod
+    def _sanitize_prompt(prompt):
+        """
+        >>> StoryBoardPrompt._sanitize_prompt("dog :1 cat:.0")
+        'dog:1 cat:.0'
+        """
+        prompt = prompt.replace(" :", ":").replace(" .", ".").replace(" ,", ",").replace(" ?", "?")
+        prompt = prompt.replace(": ", ":")
+        prompt = prompt.replace("( ", "(")
+        prompt = prompt.replace(" )", ")")
+        prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
+        prompt = prompt.replace("\n", " ")
+        prompt = prompt.replace("\r", " ")
+        prompt = prompt.replace("[", " ").replace("]", " ")
+        prompt = prompt.replace("{", " ").replace("}", " ")
+        # compact blankspace
+        for i in range(10):
+            prompt = prompt.replace("  ", " ")
+
+        prompt = prompt.replace("(", "").replace(")", "")
+        return prompt.strip()
+
+    @staticmethod
+    def _get_prompt_words_and_weights_list(prompt) -> List[Tuple[str, float]]:
+        """
+        >>> try:
+        ...     SB = StoryBoardPrompt("doctests", [0.5, 0.5])
+        ...     [SB._get_prompt_words_and_weights_list(SB._sanitize_prompt(i)) for i in SB._testing_dirty_prompts]
+        ... except Exception as e:
+        ...     print(e)
+        [[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]
+        """
+
+        words = prompt.split(" ")
+        possible_word_weight_pairs = [i.split(":") for i in words]
+
+        out: List[Tuple[str, float]] = []
+        for word_weight_pair in possible_word_weight_pairs:
+            value_count = len(word_weight_pair)  # number of values in the tuple
+            # if the length of the item that is possibly a word weight pair is 1 then it is just a word
+            if value_count == 1:  # when there is no weight assigned to the word
+                w = 1.0
+            # if the length of the item that is possibly a word weight pair is 2 then it is a word and a weight
+            elif value_count == 2:  # then there is a word and probably a weight in the tuple
+                # if the second item in the word weight pair is a float then it is a weight
+                try:
+                    w = float(word_weight_pair[1])
+                # if the second item in the word weight pair is not a float then it is not a weight
+                except ValueError:
+                    raise ValueError(f"Could not convert {word_weight_pair[1]} to a float")
+            else:
+                raise ValueError(f"Could not convert {word_weight_pair} to a word weight pair")
+            out.append((word_weight_pair[0], w))
+        return out
+
+    @staticmethod
+    def _get_sections(words_and_weights_list: List[List[Tuple[str, float]]]) -> List[List[List[Tuple[str, float]]]]:
+        """
+        >>> try:
+        ...     SB = StoryBoardPrompt("doctests", [0.5, 0.5])
+        ...     SB._get_sections(SB._words_and_weights)
+        ... except Exception as e:
+        ...     print(e)
+        [[[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 1.0)]], [[('dog', 1.0), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]]
+        """
+        sections: List[List[List[Tuple[str, float]]]] = [
+            [words_and_weights_list[0], words_and_weights_list[1]],
+            # transition from lattice pt 1 to 2
+            [words_and_weights_list[1], words_and_weights_list[2]],
+            # transition from lattice pt 2 to 3
+        ]
+        return sections
+
+    @staticmethod
+    def _get_word_weight_at_percent(section, word_index, percent):
+        """
+        >>> try:
+        ...     SB = StoryBoardPrompt("doctests", [0.5, 0.5])
+        ...     SB._get_word_weight_at_percent(SB._sections[0], 0, 0.5)
+        ... except Exception as e:
+        ...     print(e)
+        1.0
+        """
+        start_weight = section[0][word_index][1]
+        end_weight = section[1][word_index][1]
+        return start_weight + percent * (end_weight - start_weight)
+
+    @staticmethod
+    def _get_frame_values_for_prompt_word_weights(sections,
+                                                  num_frames):  # list[sections[frames[word:weight tuples]]]
+        """
+        >>> while True:
+        ...     SB = StoryBoardPrompt("doctests", [.5,.5])
+        ...     sections = SB._get_frame_values_for_prompt_word_weights(SB._sections, num_frames=4)
+        ...     for section in sections:
+        ...         print(section)
+        ...     break
+        [[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 0.3333333333333333)], [('dog', 1.0), ('cat', 0.6666666666666666)], [('dog', 1.0), ('cat', 1.0)]]
+        [[('dog', 1.0), ('cat', 1.0)], [('dog', 0.6666666666666667), ('cat', 1.0)], [('dog', 0.33333333333333337), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]
+        """
+        # get the weights for each word of each prompt in the prompts list returns a list of lists of tuples
+        # words_and_weights_for_prompts = [StoryBoardPrompt._get_prompt_words_and_weights_list(p) for p in prompts]
+
+        # define the two distinct sections of the storyboard_call_multi
+        # each section is composed of frames, each frame has different weights for each word (probably) which results
+        # in a unique image for the animation
+
+        # contents= sections[words[word,weight]]
+
+        sections_frames = []
+        for section in sections:
+            start: List[tuple[str, float]] = section[0]
+            end: List[tuple[str, float]] = section[1]
+            word_frame_weights = []
+            for i in range(num_frames):
+                frame_weights = []
+                for word_idx, word_at_pos in enumerate(start):
+                    # format like: ('dog', 0.0)
+                    word_frame_weight = StoryBoardPrompt._get_word_weight_at_percent(section, word_idx,
+                                                                                     i / (num_frames - 1))
+
+                    frame_weights.append((word_at_pos[0], word_frame_weight))
+                word_frame_weights.append(frame_weights)
+            sections_frames.append(word_frame_weights)
+
+        return sections_frames
+
+    def _get_prompt_at_time(self, seconds: float, *args):
+        """
+        >>> try:
+        ...     SB = StoryBoardPrompt("doctests",[0.5,0.5])
+        ...     SB._get_prompt_at_time(0.5)
+        ... except Exception as e:
+        ...     raise e
+        'dog:1.0 cat:1.0'
+        """
+
+        if seconds < 0:
+            raise ValueError("seconds cannot be less than 0")
+        if seconds > self.total_seconds:
+            raise ValueError("seconds cannot be greater than the total time of the storyboard")
+
+        # find the section that the seconds is in using self._times_sections_start
+        section_second_is_in = 0
+        for i, section_start_time in enumerate(self._times_sections_start):
+            if seconds < section_start_time:
+                section_second_is_in = i - 1
+                break
+
+        prmpt = []
+        section_data = self._sections[section_second_is_in]
+        for w_idx, word in enumerate(self._words):
+            prmpt.append([word,
+                          self._get_word_weight_at_percent(
+                              section_data,
+                              w_idx,
+                              seconds / self.seconds_lengths[section_second_is_in])
+                          ])
+
+        return "".join([f"({w[0]}:{w[1]:.15f})" for w in prmpt])
+
+    def __getitem__(self, time_seconds: float) -> str:
+        return self(time_seconds)
+
+    def _get_nouns_only(self, p):
+        out = [ sp for sp in p if sp[0] in self.noun_list]
+        return out
+
+
+
+
+if __name__ == "__main__":
+    import doctest
+
+    assert StoryBoardPrompt(
+        [
+            "super:1 hero:1 cat:0.0",
+            "super:0 hero:1 cat:0.5",
+            "super:1 hero:1 cat:0.0"
+        ],
+        seconds_lengths=[1.0, 1.0])(0.5) == "super:0.5 hero:1.0 cat:0.25"
+
+    test1 = StoryBoardPrompt("doctests", [0.5, 0.5])
+    doctest.testmod()
+    doctest.testmod(verbose=True)
+
+    # usage example
+    movie_section_lengths = [10, 10]
+    movies_fps = 1
+    SBP = StoryBoardPrompt(["super:0 hero:0 cat:0.0 anime:.5",
+                            "super:1 hero:1 cat:1.0 anime:.5",
+                            "super:1 hero:1 cat:0.5 anime:.75",
+                            ], movie_section_lengths)
+    movie_length_in_frames = sum(movie_section_lengths) * movies_fps
+    movie_seconds_per_frame = 1 / movies_fps
+    movie_frames = [SBP(i * movie_seconds_per_frame) for i in range(movie_length_in_frames)]
+    print(movie_frames, len(movie_frames))
