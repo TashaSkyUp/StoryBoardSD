@@ -643,7 +643,7 @@ class StoryBoardGradio:
                 gr.HTML("<hr>")
                 make_gr_label("Parameter Explorer")
 
-                def get_files_at_path(path=None) -> list[str]:
+                def get_files_at_path(path=None) -> List[str]:
                     # Get a list of files in the root directory
                     root_files = [os.path.join(path,f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
                     return root_files
