@@ -1,6 +1,5 @@
 import html
 import json
-import math
 import mimetypes
 import os
 import platform
@@ -15,8 +14,7 @@ from functools import partial, reduce
 import gradio as gr
 import gradio.routes
 import gradio.utils
-import numpy as np
-from PIL import Image, PngImagePlugin
+from PIL import PngImagePlugin
 
 from modules import sd_hijack, sd_models, localization, script_callbacks
 from modules.paths import script_path
@@ -35,7 +33,7 @@ import modules.scripts
 import modules.shared as shared
 import modules.styles
 import modules.textual_inversion.ui
-import modules.story_squad
+import modules.storysquad_storyboard.storyboard_gr as StoryboardGr
 from modules import prompt_parser
 from modules.images import save_image
 from modules.sd_hijack import model_hijack
@@ -692,11 +690,11 @@ Requested path was: {f}
 def create_ui(wrap_gradio_gpu_call):
     import modules.img2img
     import modules.txt2img
-    import modules.sb_sd_render
-    from modules.story_squad import StoryBoard
+    from modules.storysquad_storyboard.storyboard import DEV_MODE as SB_DEV_MODE
+
 
     # if modules.story_squad.DEV_MODE:
-    story_squad_interface = StoryBoard().get_story_squad_ui()
+    story_squad_interface = StoryboardGr.StoryBoardGradio().get_story_squad_ui()
 
     with gr.Blocks(analytics_enabled=False) as txt2img_interface:
         txt2img_prompt, roll, txt2img_prompt_style, txt2img_negative_prompt, txt2img_prompt_style2, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, txt2img_paste, token_counter, token_button = create_toprow(
@@ -1871,7 +1869,7 @@ def create_ui(wrap_gradio_gpu_call):
         with open(ui_config_file, "w", encoding="utf8") as file:
             json.dump(ui_settings, file, indent=4)
 
-    if not modules.story_squad.DEV_MODE:
+    if SB_DEV_MODE:
         tabs.visible = False
         mod = [b.__setattr__("visible", False) for b in demo.blocks.values() if
                "elem_id" in dir(b) and b.elem_id == "quicksettings"]
