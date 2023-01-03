@@ -2,6 +2,7 @@ import json
 import math
 import os
 import sys
+import time
 
 import torch
 import numpy as np
@@ -477,11 +478,14 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
     if type(seed) == list:
         p.all_seeds = seed
     else:
+        # if seed is not a list, we use it as a base seed and generate a list of ascending seeds
+        # if the subseed_strength is 0, we use the same seed for all images
         p.all_seeds = [int(seed) + (x if p.subseed_strength == 0 else 0) for x in range(len(p.all_prompts))]
 
     if type(subseed) == list:
         p.all_subseeds = subseed
     else:
+        # if subseed is not a list, we use it as a base subseed and generate a list of ascending subseeds
         p.all_subseeds = [int(subseed) + x for x in range(len(p.all_prompts))]
 
     def infotext(iteration=0, position_in_batch=0):
@@ -503,30 +507,37 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
         if state.job_count == -1:
             state.job_count = p.n_iter
 
-        for n in range(p.n_iter):
+        for iter_num in range(p.n_iter):
             if state.skipped:
                 state.skipped = False
             
             if state.interrupted:
                 break
 
-            prompts = p.all_prompts[n * p.batch_size:(n + 1) * p.batch_size]
-            seeds = p.all_seeds[n * p.batch_size:(n + 1) * p.batch_size]
-            subseeds = p.all_subseeds[n * p.batch_size:(n + 1) * p.batch_size]
+            prompts = p.all_prompts[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
+            seeds = p.all_seeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
+            subseeds = p.all_subseeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
 
             if (len(prompts) == 0):
                 break
 
             with devices.autocast():
-                uc = prompt_parser.get_learned_conditioning(shared.sd_model, len(prompts) * [p.negative_prompt], p.steps)
-                c = prompt_parser.get_multicond_learned_conditioning(shared.sd_model, prompts, p.steps)
+                print("starting to get conditionings - part1")
+                ttt = time.thread_time()
+                uc = prompt_parser.get_learned_conditioning(shared.sd_model, tuple(len(prompts) * [p.negative_prompt]), p.steps)
+                print("starting to get conditionings - part2")
+                c = prompt_parser.get_multicond_learned_conditioning(shared.sd_model, tuple(prompts), p.steps)
+                print(f'learned conditioning time: {time.thread_time() - ttt}')
+                #print the lru cache info
+                print(f'learned conditioning cache info: {prompt_parser.get_learned_conditioning.cache_info()}')
+                print(f'multicond learned conditioning cache info: {prompt_parser.get_multicond_learned_conditioning.cache_info()}')
 
             if len(model_hijack.comments) > 0:
                 for comment in model_hijack.comments:
                     comments[comment] = 1
 
             if p.n_iter > 1:
-                shared.state.job = f"Batch {n+1} out of {p.n_iter}"
+                shared.state.job = f"Batch {iter_num+1} out of {p.n_iter}"
 
             with devices.autocast():
                 samples_ddim = p.sample(conditioning=c, unconditional_conditioning=uc, seeds=seeds, subseeds=subseeds, subseed_strength=p.subseed_strength)
@@ -552,7 +563,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
 
                 if p.restore_faces:
                     if opts.save and not p.do_not_save_samples and opts.save_images_before_face_restoration:
-                        images.save_image(Image.fromarray(x_sample), p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(n, i), p=p, suffix="-before-face-restoration")
+                        images.save_image(Image.fromarray(x_sample), p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p, suffix="-before-face-restoration")
 
                     devices.torch_gc()
 
@@ -564,15 +575,15 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 if p.color_corrections is not None and i < len(p.color_corrections):
                     if opts.save and not p.do_not_save_samples and opts.save_images_before_color_correction:
                         image_without_cc = apply_overlay(image, p.paste_to, i, p.overlay_images)
-                        images.save_image(image_without_cc, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(n, i), p=p, suffix="-before-color-correction")
+                        images.save_image(image_without_cc, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p, suffix="-before-color-correction")
                     image = apply_color_correction(p.color_corrections[i], image)
 
                 image = apply_overlay(image, p.paste_to, i, p.overlay_images)
-
+                ttt= time.thread_time()
                 if opts.samples_save and not p.do_not_save_samples:
-                    images.save_image(image, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(n, i), p=p)
-
-                text = infotext(n, i)
+                    images.save_image(image, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p)
+                print(f'save image time: {time.thread_time() - ttt}')
+                text = infotext(iter_num, i)
                 infotexts.append(text)
                 if opts.enable_pnginfo:
                     image.info["parameters"] = text

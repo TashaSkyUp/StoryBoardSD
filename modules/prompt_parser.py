@@ -1,8 +1,9 @@
 import re
 from collections import namedtuple
+from functools import lru_cache
 from typing import List
 import lark
-
+import time
 # a prompt like this: "fantasy landscape with a [mountain:lake:0.25] and [an oak:a christmas tree:0.75][ in foreground::0.6][ in background:0.25] [shoddy:masterful:0.5]"
 # will be represented with prompt_schedule like this (assuming steps=100):
 # [25, 'fantasy landscape with a mountain and an oak in foreground shoddy']
@@ -103,8 +104,8 @@ def get_learned_conditioning_prompt_schedules(prompts, steps):
 
 ScheduledPromptConditioning = namedtuple("ScheduledPromptConditioning", ["end_at_step", "cond"])
 
-
-def get_learned_conditioning(model, prompts, steps):
+@lru_cache(maxsize=20)
+def get_learned_conditioning(model, prompts:tuple, steps):
     """converts a list of prompts into a list of prompt schedules - each schedule is a list of ScheduledPromptConditioning, specifying the comdition (cond),
     and the sampling step at which this condition is to be replaced by the next one.
 
@@ -122,6 +123,7 @@ def get_learned_conditioning(model, prompts, steps):
         ]
     ]
     """
+    prompts=list(prompts)
     res = []
 
     prompt_schedules = get_learned_conditioning_prompt_schedules(prompts, steps)
@@ -149,8 +151,8 @@ def get_learned_conditioning(model, prompts, steps):
 
 re_AND = re.compile(r"\bAND\b")
 re_weight = re.compile(r"^(.*?)(?:\s*:\s*([-+]?(?:\d+\.?|\d*\.\d+)))?\s*$")
-
-def get_multicond_prompt_list(prompts):
+@lru_cache(maxsize=20)
+def get_multicond_prompt_list(prompts:tuple):
     res_indexes = []
 
     prompt_flat_list = []
@@ -190,22 +192,24 @@ class MulticondLearnedConditioning:
     def __init__(self, shape, batch):
         self.shape: tuple = shape  # the shape field is needed to send this object to DDIM/PLMS
         self.batch: List[List[ComposableScheduledPromptConditioning]] = batch
-
-def get_multicond_learned_conditioning(model, prompts, steps) -> MulticondLearnedConditioning:
+@lru_cache(maxsize=20)
+def get_multicond_learned_conditioning(model, prompts:tuple, steps) -> MulticondLearnedConditioning:
     """same as get_learned_conditioning, but returns a list of ScheduledPromptConditioning along with the weight objects for each prompt.
     For each prompt, the list is obtained by splitting the prompt using the AND separator.
 
     https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/
     """
-
+    #prompts=list(prompts)
     res_indexes, prompt_flat_list, prompt_indexes = get_multicond_prompt_list(prompts)
 
-    learned_conditioning = get_learned_conditioning(model, prompt_flat_list, steps)
+    learned_conditioning = get_learned_conditioning(model, tuple(prompt_flat_list), steps)
 
     res = []
+    print(f'starting inner loop for get_multicond')
+    ttt=time.time()
     for indexes in res_indexes:
         res.append([ComposableScheduledPromptConditioning(learned_conditioning[i], weight) for i, weight in indexes])
-
+    print(f'finished inner loop for get_multicond in {time.time()-ttt} seconds')
     return MulticondLearnedConditioning(shape=(len(prompts),), batch=res)
 
 
