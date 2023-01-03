@@ -1,0 +1,31 @@
+@startuml
+'https://plantuml.com/object-diagram
+' make a place for a discription
+
+
+
+' makes a place for the subtitle'
+header <font color=blue>**StoryBoard Diagram**</font>
+
+
+
+    map StoryBoard {
+
+     HelixPoints => SBImage
+     Prompt_embeddings => np.array
+     get_SBMultiSampleArgs => SBMultiSampleArgs
+    }
+
+map SBIHyperParams{
+    Prompt => StoryBoardPrompt
+}
+map SBImage {
+
+    hyperParams => SBIHyperParams
+    renderParams => SBIRenderParams
+}
+
+
+StoryBoard::HelixPoints --> SBImage
+SBImage::hyperParams --> SBIHyperParams
+@enduml
