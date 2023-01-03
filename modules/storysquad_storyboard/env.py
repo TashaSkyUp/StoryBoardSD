@@ -1,5 +1,6 @@
 import os
 
+STORYBOARD_DEV_MODE = os.getenv("STORYBOARD_DEV_MODE") == "True"
 STORYBOARD_RENDER_PATH = os.getenv("STORYBOARD_RENDER_PATH")
 STORYBOARD_TMP_PATH = os.path.join(os.getenv("STORYBOARD_RENDER_PATH"), "tmp")
 
