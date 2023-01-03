@@ -670,7 +670,7 @@ class SBMultiSampleArgs:
 
      they have been split into hyper params and render params"""
 
-    def __init__(self, render: SBIRenderParams, hyper: List[SBIHyperParams] | List[str] = []):
+    def __init__(self, render: SBIRenderParams, hyper):
         # this just ensures that all the params are lists
         self._hyper: SBIHyperParams = self._make_list(hyper)
         self._render = render

@@ -181,7 +181,7 @@ def sanitize_prompt(prompt):
 from typing import List, Tuple
 
 
-def _get_noun_list() -> list[str]:
+def _get_noun_list() -> List[str]:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     with open("nounlist.csv", 'r') as f:
         noun_list = f.read().splitlines()
