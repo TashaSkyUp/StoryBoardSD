@@ -1002,7 +1002,6 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
     return target_mp4_f_path
 
 
-@staticmethod
 def compose_storyboard_render(my_render_params, all_state, early_stop, storyboard_params, test,
                               test_render, ui_params, SBIMA_render_func, base_SBIMulti: SBMultiSampleArgs):
     # in the interest of syncing the legth of the audio voice over and the length of the video it is important to
