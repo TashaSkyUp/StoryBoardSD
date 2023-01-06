@@ -13,7 +13,7 @@ MAX_BATCH_SIZE = 9
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
     "negative_prompt": "",
-    "steps": 5,
+    "steps": 8,
     "seed": 0,
     "subseed": 0,
     "subseed_strength": 0,
