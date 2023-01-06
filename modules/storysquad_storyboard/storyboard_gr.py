@@ -666,7 +666,18 @@ class StoryBoardGradio:
 
                     with gr.Tab("Files"):
                         with gr.Column():
-                            files = gr.Files(get_files_at_path(sb_env.STORYBOARD_RENDER_PATH), label="Files")
+                            pages = [get_files_at_path(sb_env.STORYBOARD_RENDER_PATH)[i:i + 10] for i in
+                                     range(0, len(get_files_at_path(sb_env.STORYBOARD_RENDER_PATH)), 10)]
+
+                            with gr.Tabs() as tabs:
+                                for i, files in enumerate(pages):
+                                    with gr.Tab(str(i)):
+                                        with gr.Row() as pg:
+                                            for f in files:
+                                                with gr.Column(scale=0.10, min_width=64):
+                                                    with gr.Row():
+                                                        gr.Video(interactive=False, value=f, label=None,
+                                                                     show_label=False, elem_id="video_file")
 
         return story_squad_interface
 
