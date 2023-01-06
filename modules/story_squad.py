@@ -14,7 +14,7 @@ DEFAULT_HYPER_PARAMS = {
     "prompt": "",
     "negative_prompt": "",
     "steps": 8,
-    "seed": 0,
+    "seed": -1,
     "subseed": 0,
     "subseed_strength": 0,
     "cfg_scale": 7,
