@@ -26,16 +26,12 @@ class DEFAULT_HYPER_PARAMS:
     subseed: int = DEFAULT_HYPER_PARAMS["subseed"]
     subseed_strength: int = DEFAULT_HYPER_PARAMS["subseed_strength"]
     cfg_scale: int = DEFAULT_HYPER_PARAMS["cfg_scale"]
-
-
+        
+        
 DEV_HYPER_PARAMS = DEFAULT_HYPER_PARAMS(steps=1)
 
-DEFAULT_HYPER_PARAMS = DEV_HYPER_PARAMS
-
-# DEV_HYPER_PARAMS["steps"] = 1
-
-if DEV_MODE:
-    pass
+if DEV_MODE:    
+    DEFAULT_HYPER_PARAMS = DEV_HYPER_PARAMS
 
 
 class SBIHyperParams:
