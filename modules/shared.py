@@ -17,6 +17,8 @@ import modules.devices as devices
 from modules import sd_samplers, sd_models, localization
 from modules.hypernetworks import hypernetwork
 from modules.paths import models_path, script_path, sd_path
+from multiprocessing import Pool
+mp_pool = None
 
 sd_model_file = os.path.join(script_path, 'model.ckpt')
 default_sd_model_file = sd_model_file

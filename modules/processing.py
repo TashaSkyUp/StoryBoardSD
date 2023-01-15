@@ -529,7 +529,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 c = prompt_parser.get_multicond_learned_conditioning(shared.sd_model, tuple(prompts), p.steps)
                 print(f'learned conditioning time: {time.thread_time() - ttt}')
                 #print the lru cache info
-                print(f'learned conditioning cache info: {prompt_parser.get_learned_conditioning.cache_info()}')
+                #print(f'learned conditioning cache info: {prompt_parser.get_learned_conditioning.cache_info()}')
                 print(f'multicond learned conditioning cache info: {prompt_parser.get_multicond_learned_conditioning.cache_info()}')
 
             if len(model_hijack.comments) > 0:
@@ -556,7 +556,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             if opts.filter_nsfw:
                 import modules.safety as safety
                 x_samples_ddim = modules.safety.censor_batch(x_samples_ddim)
-
+            ttt= time.thread_time()
             for i, x_sample in enumerate(x_samples_ddim):
                 x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
                 x_sample = x_sample.astype(np.uint8)
@@ -579,16 +579,16 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                     image = apply_color_correction(p.color_corrections[i], image)
 
                 image = apply_overlay(image, p.paste_to, i, p.overlay_images)
-                ttt= time.thread_time()
+
                 if opts.samples_save and not p.do_not_save_samples:
                     images.save_image(image, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p)
-                print(f'save image time: {time.thread_time() - ttt}')
+
                 text = infotext(iter_num, i)
                 infotexts.append(text)
                 if opts.enable_pnginfo:
                     image.info["parameters"] = text
                 output_images.append(image)
-
+            print(f'save image batch time: {time.thread_time() - ttt}')
             del x_samples_ddim 
 
             devices.torch_gc()

@@ -31,6 +31,10 @@ from modules.paths import script_path
 from modules.shared import cmd_opts
 import modules.hypernetworks.hypernetwork
 
+
+
+from multiprocessing import Pool
+
 queue_lock = threading.Lock()
 
 
@@ -131,7 +135,8 @@ def webui():
     while 1:
         demo = modules.ui.create_ui(wrap_gradio_gpu_call=wrap_gradio_gpu_call)
 
-        app, local_url, share_url = demo.queue().launch(
+        app, local_url, share_url = demo.queue(default_enabled=False).launch(
+        #app, local_url, share_url = demo.launch(
             share=cmd_opts.share,
             server_name="0.0.0.0" if cmd_opts.listen else None,
             server_port=cmd_opts.port,
@@ -164,6 +169,7 @@ def webui():
 
 task = []
 if __name__ == "__main__":
+    #shared.mp_pool = Pool(4,)
     if cmd_opts.nowebui:
         api_only()
     else:

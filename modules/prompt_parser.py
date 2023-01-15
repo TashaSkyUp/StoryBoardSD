@@ -193,19 +193,22 @@ class MulticondLearnedConditioning:
         self.shape: tuple = shape  # the shape field is needed to send this object to DDIM/PLMS
         self.batch: List[List[ComposableScheduledPromptConditioning]] = batch
 @lru_cache(maxsize=20)
-def get_multicond_learned_conditioning(model, prompts:tuple, steps) -> MulticondLearnedConditioning:
+def get_multicond_learned_conditioning(model, prompts:tuple, steps,verbose=False) -> MulticondLearnedConditioning:
     """same as get_learned_conditioning, but returns a list of ScheduledPromptConditioning along with the weight objects for each prompt.
     For each prompt, the list is obtained by splitting the prompt using the AND separator.
 
     https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/
     """
-    #prompts=list(prompts)
+    # prompts=list(prompts)
     res_indexes, prompt_flat_list, prompt_indexes = get_multicond_prompt_list(prompts)
 
     learned_conditioning = get_learned_conditioning(model, tuple(prompt_flat_list), steps)
 
     res = []
-    print(f'starting inner loop for get_multicond')
+
+    if (verbose == True):
+        print(f'starting inner loop for get_multicond')
+
     ttt=time.time()
     for indexes in res_indexes:
         res.append([ComposableScheduledPromptConditioning(learned_conditioning[i], weight) for i, weight in indexes])

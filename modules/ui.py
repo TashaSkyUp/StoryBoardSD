@@ -1701,7 +1701,6 @@ def create_ui(wrap_gradio_gpu_call):
             column.__exit__()
 
     interfaces = [
-        (story_squad_interface, "Story Board", "story_squad"),
         (txt2img_interface, "txt2img", "txt2img"),
         (img2img_interface, "img2img", "img2img"),
         (extras_interface, "Extras", "extras"),
@@ -1709,6 +1708,8 @@ def create_ui(wrap_gradio_gpu_call):
         (modelmerger_interface, "Checkpoint Merger", "modelmerger"),
         (train_interface, "Train", "ti"),
     ]
+
+    if SB_DEV_MODE: interfaces.append((story_squad_interface, "Story Board", "story_squad"))
 
     css = ""
 
@@ -1859,7 +1860,7 @@ def create_ui(wrap_gradio_gpu_call):
             apply_field(x, 'visible')
 
     # Load settings
-    visit(story_squad_interface, loadsave, "story_squad")
+    #visit(story_squad_interface, loadsave, "story_squad")
     visit(txt2img_interface, loadsave, "txt2img")
     visit(img2img_interface, loadsave, "img2img")
     visit(extras_interface, loadsave, "extras")
@@ -1869,7 +1870,7 @@ def create_ui(wrap_gradio_gpu_call):
         with open(ui_config_file, "w", encoding="utf8") as file:
             json.dump(ui_settings, file, indent=4)
 
-    if SB_DEV_MODE:
+    if not SB_DEV_MODE:
         tabs.visible = False
         mod = [b.__setattr__("visible", False) for b in demo.blocks.values() if
                "elem_id" in dir(b) and b.elem_id == "quicksettings"]

@@ -3,6 +3,7 @@ import os
 STORYBOARD_DEV_MODE = os.getenv("STORYBOARD_DEV_MODE") == "True"
 STORYBOARD_RENDER_PATH = os.getenv("STORYBOARD_RENDER_PATH")
 STORYBOARD_TMP_PATH = os.path.join(os.getenv("STORYBOARD_RENDER_PATH"), "tmp")
+STORYBOARD_FFMPEG_PATH = os.getenv("STORYBOARD_FFMPEG_PATH")
 
 
 
@@ -31,6 +32,8 @@ def assure_os_perfect_path(os_path: str, override_os=None) -> str:
         path_type = "win"
     elif '/' in os_path:  # Linux
         path_type = "linux"
+    elif '~' in os_path:  # Linux
+        path_type = "linux"
 
     if os_path[0] == "\\":  # windows path sep with no drive letter = linux path
         path_type = "linux"
@@ -56,3 +59,4 @@ def assure_os_perfect_path(os_path: str, override_os=None) -> str:
 
 STORYBOARD_RENDER_PATH = assure_os_perfect_path(STORYBOARD_RENDER_PATH)
 STORYBOARD_TMP_PATH = assure_os_perfect_path(STORYBOARD_TMP_PATH)
+STORYBOARD_FFMPEG_PATH = STORYBOARD_FFMPEG_PATH

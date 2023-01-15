@@ -183,16 +183,19 @@ class StoryBoardGradio:
         # populate all_state with the default values
         # its hard to explain why this is done this way, but it is
         # basically gradio needs to be informed this way that the objects exist
+
         with self.get_story_squad_ui() as wrapped_ui:
             self.StSqUI = wrapped_ui
             self.get_story_squad_ui = lambda: self.StSqUI
 
-            self.all_state["history"] = []
-            self.all_state["im_explorer_hparams"] = []
-            self.all_state["story_board"] = []
 
-            self.all_state = gr.State(self.all_state)
             self.setup_story_board_events()
+    def reset_story_board(self, state,*sb_imgs):
+        state["story_board"] = []
+        state["history"] = []
+        state["im_explorer_hparams"] = []
+        sb_imgs = []
+        return state,*sb_imgs
 
     def render_storyboard_benchmark(self, *args):
 
@@ -277,6 +280,8 @@ class StoryBoardGradio:
             test = True
             test_render = True
             storyboard_params = get_test_storyboard()
+            render_settings = DefaultRender()
+
 
         else:
             test = False
@@ -414,12 +419,23 @@ class StoryBoardGradio:
             # get new SBMultiSampleArgs for the image explorer
             # render_call_args = self.explore(render_params, all_state["history"], self.SimpleExplorerModel())
 
-        if "handle the regeneration of the explorer second":
-            tmp = list(self.on_generate(all_state, *ui_state_comps))
-            all_state, tmp = tmp[0], tmp[1:]
-            exp_images, tmp = tmp[:9], tmp[9:]
-            exp_texts, _ = tmp[:9], tmp[9:]
+        if "handle the regeneration of the explorer second but only if the storyboard is not complete":
+            if len(all_state["story_board"]) < NUM_SB_IMAGES:
+                tmp = list(self.on_generate(all_state, *ui_state_comps))
+                all_state, tmp = tmp[0], tmp[1:]
+                exp_images, tmp = tmp[:9], tmp[9:]
+                exp_texts, _ = tmp[:9], tmp[9:]
+            else:
+                # todo: find a way to pass something that doesnt change these values
+                exp_images, exp_texts = [None]*9, [""]*9
 
+        # TODO: to make this owrk the lists contained in "all_components"
+        #  need to be expanded to not be lists and then passed
+        #return {self.all_state:all_state,
+        #        self.all_components["story_board_images"]:story_board_images,
+        #        self.all_components["im_explorer"]["images"]:exp_images,
+        #        self.all_components["im_explorer"]["texts"]:exp_texts
+        #        }
         return all_state, *story_board_images, *exp_images, *exp_texts
 
     def get_sb_multi_sample_params_from_ui(self, ui_param_state:List[gradio.components.Component]) -> SBMultiSampleArgs:
@@ -463,8 +479,8 @@ class StoryBoardGradio:
             out_sb_image_hyper_params = []
 
             def random_pompt_word_weights(prompt_to_randomize: str):
-                from  modules.storysquad_storyboard.storyboard import _get_noun_list
-                noun_list = _get_noun_list()
+                #from  modules.storysquad_storyboard.storyboard import _get_noun_list
+                #noun_list = _get_noun_list()
                 # if the prompt is a list not a string fix it
                 if isinstance(prompt_to_randomize, list) and len(prompt_to_randomize) == 1:
                     prompt_to_randomize = prompt_to_randomize[0]
@@ -475,7 +491,8 @@ class StoryBoardGradio:
                     prompt_to_randomize = "this is a test prompt that jumped over a lazy dog and then ran away"
 
                 prompt_to_randomize = prompt_to_randomize.split(" ")
-                prompt_to_randomize = ' '.join([w for w in prompt_to_randomize if w in noun_list])
+                #prompt_to_randomize = ' '.join([w for w in prompt_to_randomize if w in noun_list])
+                prompt_to_randomize = ' '.join([w for w in prompt_to_randomize])
 
                 words, weights = zip(*get_prompt_words_and_weights_list(prompt_to_randomize))
                 weights = [(random.random() - .5) + w for w in weights]
@@ -583,9 +600,15 @@ class StoryBoardGradio:
                         DEFAULT_HYPER_PARAMS.subseed_strength)
 
         with gr.Blocks() as story_squad_interface:
+            self.all_state["history"] = []
+            self.all_state["im_explorer_hparams"] = []
+            self.all_state["story_board"] = []
+
+            self.all_state = gr.State(self.all_state)
             id_part = "storyboard_call_multi"
-            label = make_gr_label("StoryBoardGradio by Story Squad")
-            with gr.Row(elem_id="toprow"):
+            label = make_gr_label("StoryBoard by Story Squad")
+
+            with gr.Row(elem_id="toprow") as top_row:
                 with gr.Column(scale=80):
                     self.all_components["param_inputs"]["prompt"] = gr.Textbox(label="Prompt",
                                                                                #elem_id=f"{id_part}_prompt",
@@ -618,40 +641,47 @@ class StoryBoardGradio:
                             gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
 
                             self.all_components["dev_render"] = gr.Button('Dev Render', elem_id=f"{id_part}_dev_render")
-
+                            if not DEV_MODE: self.all_components["dev_render"].visible = False
                             gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
 
                             self.all_components["benchmark"] = gr.Button('Benchmark',
                                                                   variant='primary')
+                            if not DEV_MODE: self.all_components["benchmark"].visible = False
                             gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
 
                             self.all_components["on_preview_audio"] = gr.Button('Preview Audio')
                             gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
+                            if not DEV_MODE: self.all_components["on_preview_audio"].visible = False
 
             with gr.Column():
                 gr.HTML("<hr>")
                 gr.update()
-                with gr.Row(scale=1, variant="panel", elem_id="changeme"):  # story board
+                with gr.Row(scale=1, variant="panel", elem_id="changeme") as storyboard_display:  # story board
                     with gr.Column():
-                        make_gr_label("StoryBoardGradio")
-                        with gr.Row(label="StoryBoardGradio", scale=1):
+                        make_gr_label("StoryBoard")
+                        with gr.Row(label="StoryBoard", scale=1):
                             image1 = gr.Image(label="position 1", interactive=False)
                             image2 = gr.Image(label="position 2", interactive=False)
                             image3 = gr.Image(label="position 3", interactive=False)
                             self.all_components["story_board_images"] = [image1, image2, image3]
 
-                gr.HTML("<hr>")
-                make_gr_label("Parameter Explorer")
 
                 def get_files_at_path(path=None) -> List[str]:
-                    # Get a list of files in the root directory
-                    root_files = [os.path.join(path,f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+                    root_files = [os.path.join(path, f) for f in os.listdir(path)
+                                  if os.path.isfile(os.path.join(path, f))]
+                    root_files.sort(key=os.path.getmtime, reverse=True)
                     return root_files
 
+                def refresh_renders_display(idx):
+                    video_file = get_files_at_path(path=sb_env.STORYBOARD_RENDER_PATH)[idx]
+                    out = videos_comps[idx].update(visible=True, value=video_file)
+                    return out
 
-                with gr.Tabs() as tabs:
-                    with gr.Tab("Interface"):
-                        with gr.Row(scale=1) as image_exolorer:
+                with gr.Blocks() as interfaces:
+                    with gr.Column() as robot_dreams:
+                        gr.HTML("<hr>")
+                        make_gr_label("RobotDreams")
+                        with gr.Row(scale=1) as image_explorer:
                             with gr.Blocks():
                                 for r in range(3):
                                     with gr.Row(equal_height=True):
@@ -662,22 +692,109 @@ class StoryBoardGradio:
 
                         with gr.Row(scale=1) as movie_result:
                             self.all_components["story_board_render"] = gr.Video()
-                            self.all_components["story_board_audio"] = gr.Audio()
+                            self.all_components["story_board_audio"]= gr.Audio()
 
-                    with gr.Tab("Files"):
-                        with gr.Column():
-                            pages = [get_files_at_path(sb_env.STORYBOARD_RENDER_PATH)[i:i + 10] for i in
-                                     range(0, len(get_files_at_path(sb_env.STORYBOARD_RENDER_PATH)), 10)]
+                            if not DEV_MODE:
+                                self.all_components["story_board_render"].visible = False
+                                self.all_components["story_board_audio"].visible = False
 
-                            with gr.Tabs() as tabs:
-                                for i, files in enumerate(pages):
-                                    with gr.Tab(str(i)):
-                                        with gr.Row() as pg:
-                                            for f in files:
-                                                with gr.Column(scale=0.10, min_width=64):
-                                                    with gr.Row():
-                                                        gr.Video(interactive=False, value=f, label=None,
-                                                                     show_label=False, elem_id="video_file")
+                    with gr.Column() as files_interface:
+                        files_interface.visible = False
+                        # files_tab.select(lambda: gr.Tabs.update(selected=1), None, interface_tabs)
+                        videos_comps = []
+                        with gr.Tabs() as file_tabs:
+                            for tbnum in range(10):
+                                with gr.TabItem(str(tbnum), id=tbnum) as tab:
+                                    # tab.select(lambda x: set_tab(x), gr.State(tbnum), file_tabs)
+                                    with gr.Row() as pg:
+                                        for _ in range(10):
+                                            with gr.Column(scale=0.10, min_width=64):
+                                                with gr.Row():
+                                                    videos_comps.append(gr.Video(
+                                                        interactive=False, label=None,
+                                                        show_label=False, elem_id="video_file", visible=False
+                                                        ))
+
+            self.all_components["param_inputs"]["list_for_generate"] = \
+                [self.all_components["param_inputs"][k] for k in
+                 keys_for_ui_in_order]
+
+            render_main_func_kwargs = {"fn":self.on_render_storyboard,
+                                "inputs":[gr.State(DefaultRender.early_stop_seconds),
+                                        self.all_state,
+                                        *self.all_components["param_inputs"]["list_for_generate"]
+                                        ],
+                                "outputs":[self.all_state, self.all_components["story_board_render"]]}
+
+            generate_main_func_kwargs = {"fn":self.on_generate,
+                                    "inputs" : [self.all_state,
+                                                *self.all_components["param_inputs"]["list_for_generate"]
+                                                ],
+                                    "outputs" : [self.all_state,
+                                               *self.all_components["im_explorer"]["images"],
+                                               *self.all_components["im_explorer"]["texts"],
+                                               *self.all_components["story_board_images"]
+                                               ]
+                                    }
+
+
+            if DEV_MODE:
+                # GENERATE BUTTON
+                self.all_components["submit"].click(lambda: gr.update(visible=True),
+                                                    outputs=[robot_dreams])
+                # SIMULATE BUTTON
+                if "create a button to simulate what happens when the render is done":
+                    sim_rc = gr.Button("Simulate Render Complete")
+                    sim_rc.click(fn=lambda: gr.Tabs.update(selected=0), outputs=[file_tabs])
+                    sim_rc.click(fn=lambda: gr.update(visible=False), outputs=[robot_dreams])
+                    sim_rc.click(fn=lambda: gr.update(visible=True), outputs=[files_interface])
+
+                    for i in range(100):
+                        sim_rc.click(fn=refresh_renders_display,
+                                inputs=gr.State(i),
+                                outputs=videos_comps[i:(i + 1)])
+
+                    sim_rc.click(fn=lambda: gr.update(visible=False), outputs=[sim_rc])
+
+                # RENDER BUTTON
+                self.all_components["render"].click(**render_main_func_kwargs)
+
+            elif not DEV_MODE:
+                # RENDER BUTTON
+                if "hide robot dreams as soon as render is pressed":
+                    self.all_components["render"].click(fn=lambda: gr.update(visible=False),queue=True,outputs=[top_row])
+                    self.all_components["render"].click(fn=lambda: gr.update(visible=False),queue=True, outputs=[storyboard_display])
+                    self.all_components["render"].click(fn=lambda: gr.update(visible=False),queue=True, outputs=[robot_dreams])
+
+
+                if "now actually call the render function":
+                    #self.all_components["render"].click(render_main_func_p["fn"],render_main_func_p["inputs"],render_main_func_p["outputs"])
+                    self.all_components["render"].click(**render_main_func_kwargs,queue=True)
+
+                if "force hiding of ALL ui elements EXCEPT files_interface after render is complete":
+                    render_b =self.all_components["render"]
+                    render_b.click(fn=lambda: gr.Tabs.update(selected=0),queue=True, outputs=[file_tabs])
+                    render_b.click(fn=lambda: gr.update(visible=False),queue=True, outputs=[robot_dreams])
+                    render_b.click(fn=lambda: gr.update(visible=True),queue=True, outputs=[files_interface])
+
+                    for i in range(100):
+                        render_b.click(fn=refresh_renders_display,
+                                       inputs=gr.State(i),
+                                       outputs=videos_comps[i:(i + 1)],
+                                       queue=f"videos_{str(int(i/4))}")
+
+                    render_b.click(fn=lambda: gr.update(visible=False),
+                                   queue=True, outputs=[render_b])
+                # END RENDER BUTTON
+
+                # GENERATE BUTTON
+                if "SHOW robot dreams as soon as render is pressed":
+                    submit_b = self.all_components["submit"]
+                    render_b = self.all_components["render"]
+                    submit_b.click(fn=lambda: gr.update(visible=True), outputs=[render_b])
+                    submit_b.click(fn=lambda: gr.update(visible=True), outputs=[robot_dreams])
+                    submit_b.click(fn=lambda: gr.update(visible=False), outputs=[files_interface])
+                    submit_b.click(**generate_main_func_kwargs)
 
         return story_squad_interface
 
@@ -687,16 +804,22 @@ class StoryBoardGradio:
         Setup the events for the story board using self.all_components that was initialized in __init__
         which called this function.
         """
-        self.all_components["param_inputs"]["list_for_generate"] = \
-            [self.all_components["param_inputs"][k] for k in
-             keys_for_ui_in_order]
-        self.all_components["render"].click(self.on_render_storyboard,
-                                            inputs=[gr.State(DefaultRender.early_stop_seconds),
-                                                    self.all_state,
-                                                    *self.all_components["param_inputs"]["list_for_generate"]
-                                                    ],
-                                            outputs=[self.all_state, self.all_components["story_board_render"]]
-                                            )
+
+
+        self.all_components["param_inputs"]["prompt"].change(self.reset_story_board,
+                                                                     inputs =[
+                                                                         self.all_state,
+                                                                         *self.all_components["story_board_images"],
+                                                                         *self.all_components["im_explorer"]["images"]
+                                                                         ],
+                                                                     outputs=[
+                                                                         self.all_state,
+                                                                         *self.all_components["story_board_images"],
+                                                                         *self.all_components["im_explorer"]["images"]
+                                                                         ]
+                                                                     )
+
+
         self.all_components["dev_render"].click(self.on_render_storyboard_dev,
                                             inputs=[gr.State(DefaultRender.early_stop_seconds),
                                                     self.all_state,
@@ -704,15 +827,17 @@ class StoryBoardGradio:
                                                     ],
                                             outputs=[self.all_state, self.all_components["story_board_render"]]
                                             )
-        self.all_components["submit"].click(self.on_generate,
-                                            inputs=[self.all_state,
-                                                    *self.all_components["param_inputs"]["list_for_generate"]],
-                                            outputs=[self.all_state,
-                                                     *self.all_components["im_explorer"]["images"],
-                                                     *self.all_components["im_explorer"]["texts"],
-                                                     *self.all_components["story_board_images"]
-                                                     ]
-                                            )
+
+        #self.all_components["submit"].click(self.on_generate,
+        #                                    inputs=[self.all_state,
+        #                                            *self.all_components["param_inputs"]["list_for_generate"]
+        #                                            ],
+        #                                    outputs=[self.all_state,
+        #                                             *self.all_components["im_explorer"]["images"],
+        #                                             *self.all_components["im_explorer"]["texts"],
+        #                                             *self.all_components["story_board_images"]
+        #                                             ]
+        #                                    )
         self.all_components["benchmark"].click(self.render_storyboard_benchmark,
                                             inputs=[self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]
@@ -725,6 +850,13 @@ class StoryBoardGradio:
                                                     ],
                                                    outputs=[self.all_state, self.all_components["story_board_audio"]]
                                                    )
+
+
+
+        # forced workflow events
+        if "unhide robot dreams if generate has been pressed"=="":
+            b = self.all_components["submit"]
+            b.click(fn=lambda: gr.update(visible=True), outputs=[robot_dreams])
 
         # create the events for the image explorer, buttons, and text boxes
         cur_img_idx = 0
@@ -755,7 +887,8 @@ class StoryBoardGradio:
                           outputs=[self.all_state,
                                    *self.all_components["story_board_images"],
                                    *self.all_components["im_explorer"]["images"],
-                                   *self.all_components["im_explorer"]["texts"], ]
+                                   *self.all_components["im_explorer"]["texts"],
+                                   ]
                           )
 
             but_down.click(self.on_downvote,

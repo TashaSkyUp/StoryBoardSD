@@ -1,16 +1,16 @@
 import json
 import numpy as np
 import os
-
+import numbers
 from dataclasses import dataclass
 from typing import List, Any
 
-DEV_MODE = os.getenv("SB_DEV_MODE", False)
+DEV_MODE = os.getenv("STORYBOARD_DEV_MODE", False) != '0'
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
     "negative_prompt": "",
     "steps": 8,
-    "seed": 0,
+    "seed": -1,
     "subseed": 0,
     "subseed_strength": 0,
     "cfg_scale": 7,
@@ -26,11 +26,11 @@ class DEFAULT_HYPER_PARAMS:
     subseed: int = DEFAULT_HYPER_PARAMS["subseed"]
     subseed_strength: int = DEFAULT_HYPER_PARAMS["subseed_strength"]
     cfg_scale: int = DEFAULT_HYPER_PARAMS["cfg_scale"]
-        
-        
+
+
 DEV_HYPER_PARAMS = DEFAULT_HYPER_PARAMS(steps=1)
 
-if DEV_MODE:    
+if DEV_MODE:
     DEFAULT_HYPER_PARAMS = DEV_HYPER_PARAMS
 
 
@@ -183,6 +183,7 @@ def _get_noun_list() -> List[str]:
         noun_list = f.read().splitlines()
     return noun_list
 
+
 class StoryBoardPrompt:
     """
     A prompt for storyboard consists of all the words for every section of the storyboard, and a function to sample
@@ -208,20 +209,18 @@ class StoryBoardPrompt:
     'dog:1.0 cat:1.0'
     """
 
-
-
-    def __init__(self, prompts: List[str] or str, seconds_lengths: List[float],use_only_nouns=False):
+    def __init__(self, prompts: List[str] or str, seconds_lengths: List[float], use_only_nouns=False):
         # change the working directory to the directory this module is in
-        #os.chdir(os.path.dirname(os.path.abspath(__file__)))
-        #with open("nounlist.csv", 'r') as f:
-            #self.noun_list = f.read().splitlines()
+        # os.chdir(os.path.dirname(os.path.abspath(__file__)))
+        # with open("nounlist.csv", 'r') as f:
+        # self.noun_list = f.read().splitlines()
         self.noun_list = _get_noun_list()
 
         self._prompts = prompts
         if isinstance(seconds_lengths, list):
             self.seconds_lengths = seconds_lengths
             self.total_seconds = sum(seconds_lengths)
-        elif isinstance(seconds_lengths, float):
+        elif isinstance(seconds_lengths, numbers.Number):
             secs_per_prompt = seconds_lengths / (len(prompts) - 1)
             self.seconds_lengths = [secs_per_prompt] * (len(prompts) - 1)
             self.total_seconds = seconds_lengths
@@ -249,16 +248,13 @@ class StoryBoardPrompt:
 
         self._words = [w[0] for w in self._words_and_weights[0]]
 
-
-
-
     def __call__(self, *args, **kwargs) -> [str]:
         # if args is a single float, then we are getting the prompt at a specific point in time
         # if args is a list of floats, then we are getting the prompt at a list of points in time
         try:
-            if type(args[0]) is float:
+            if isinstance(args[0], numbers.Number):
                 return [self._get_prompt_at_time(args[0])]
-            elif isinstance(args[0],np.floating):
+            elif isinstance(args[0], np.floating):
                 return [self._get_prompt_at_time(args[0])]
             elif type(args[0]) is list:
                 return [self._get_prompt_at_time(t) for t in args[0]]
@@ -398,10 +394,23 @@ class StoryBoardPrompt:
         """
         >>> try:
         ...     SB = StoryBoardPrompt("doctests",[0.5,0.5])
+        ...     SB._get_prompt_at_time(0.0)
+        ... except Exception as e:
+        ...     raise e
+        '(dog:1.000000000000000)(cat:0.000000000000000)'
+        >>> try:
+        ...     SB = StoryBoardPrompt("doctests",[0.5,0.5])
         ...     SB._get_prompt_at_time(0.5)
         ... except Exception as e:
         ...     raise e
-        'dog:1.0 cat:1.0'
+        '(dog:1.000000000000000)(cat:1.000000000000000)'
+        >>> try:
+        ...     SB = StoryBoardPrompt("doctests",[0.5,0.5])
+        ...     SB._get_prompt_at_time(0.75)
+        ... except Exception as e:
+        ...     raise e
+        '(dog:0.500000000000000)(cat:1.000000000000000)'
+
         """
 
         if seconds < 0:
@@ -410,11 +419,16 @@ class StoryBoardPrompt:
             raise ValueError("seconds cannot be greater than the total time of the storyboard")
 
         # find the section that the seconds is in using self._times_sections_start
-        section_second_is_in = 0
+        section_second_is_in = len(self._times_sections_start) - 1
         for i, section_start_time in enumerate(self._times_sections_start):
             if seconds < section_start_time:
                 section_second_is_in = i - 1
                 break
+
+        section_start_time = self._times_sections_start[section_second_is_in]
+        section_end_time = self._times_sections_start[section_second_is_in]+self.seconds_lengths[section_second_is_in]
+        section_length = section_end_time - section_start_time
+        section_percent = (seconds - section_start_time) / section_length
 
         prmpt = []
         section_data = self._sections[section_second_is_in]
@@ -423,19 +437,17 @@ class StoryBoardPrompt:
                           self._get_word_weight_at_percent(
                               section_data,
                               w_idx,
-                              seconds / self.seconds_lengths[section_second_is_in])
+                              section_percent)
                           ])
 
-        return "".join([f"({w[0]}:{w[1]:.15f})" for w in prmpt])
+        return "".join([f"({w[0]}:{w[1]:.5f})" for w in prmpt])
 
     def __getitem__(self, time_seconds: float) -> str:
         return self(time_seconds)
 
     def _get_nouns_only(self, p):
-        out = [ sp for sp in p if sp[0] in self.noun_list]
+        out = [sp for sp in p if sp[0] in self.noun_list]
         return out
-
-
 
 
 if __name__ == "__main__":
