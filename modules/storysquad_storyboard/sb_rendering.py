@@ -9,6 +9,7 @@ import numpy
 import numpy as np
 from PIL import Image
 
+from modules.storysquad_storyboard.env import *
 from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_words_and_weights_list, \
     get_frame_seed_data, StoryBoardPrompt
 
@@ -16,6 +17,7 @@ from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_
 
 GTTS_SAMPLE_RATE = 24000.0
 MAX_BATCH_SIZE = 10
+NUM_SB_IMAGES = 3
 
 
 @dataclass
@@ -24,17 +26,17 @@ class DefaultRender:
     minutes: int = 2
     seconds: int = minutes * 60
     sections: int = 2
-    num_frames = int(seconds * fps)
-    min_frames_per_render = fps * 10
-    num_frames_per_sctn = int(num_frames / sections)
+    num_frames: int = int(seconds * fps)
+    min_frames_per_render: int = fps * 10
+    num_frames_per_sctn: int = int(num_frames / sections)
     early_stop_seconds = int(60 * 30 * 16)  # 8 hours
-    width = 512
-    height = 512
-    restore_faces = False
-    tiling = False
-    batch_count = 1
-    batch_size = MAX_BATCH_SIZE
-    sampler_index = 9
+    width: int = 512
+    height: int = 512
+    restore_faces: bool = False
+    tiling: bool = False
+    batch_count: int = 1
+    batch_size: int = MAX_BATCH_SIZE
+    sampler_index: int = 9
 
 
 @dataclass
@@ -143,7 +145,7 @@ def create_voice_over_for_storyboard(text_to_read, speech_speed, vo_length_sec):
         aud_out = aud_out_slow
         aud_length_secs = aud_length_secs_slow
 
-    t, (data, data_sample_rate) = quick_timer(robot_voice_effect, aud_out)
+    t, (data, data_sample_rate) = quick_timer(robot_voice_effect, aud_out, iterations=0)
     print(f'robot_voice_effect latency: {t}')
 
     audio_length_secs = max(*data.shape) / data_sample_rate
@@ -155,7 +157,7 @@ def create_voice_over_for_storyboard(text_to_read, speech_speed, vo_length_sec):
     audio_length_secs = max(*data.shape) / data_sample_rate
 
     rnd_file = write_mp3(data, data_sample_rate, save_sample_rate)
-
+    # rnd_file = os.path.join(STORYBOARD_TMP_PATH, rnd_file)
     return rnd_file, audio_length_secs
 
 
@@ -166,29 +168,34 @@ def write_mp3(effected, data_sample_rate, save_sample_rate):
     from moviepy.audio.AudioClip import AudioArrayClip
 
     rnd_file = f"tmp_{random.randint(0, 1000000)}.wav"
+    rnd_file = os.path.join(STORYBOARD_TMP_PATH, rnd_file)
+    # write the audio to
     afc = AudioArrayClip(np.moveaxis(effected, 0, -1), data_sample_rate)
     afc.write_audiofile(rnd_file, fps=save_sample_rate)
     return rnd_file
 
 
-def robot_voice_effect(aud_out):
+def robot_voice_effect(aud_out, iterations=4):
+    """
+    >>> voice = get_samples_from_gtts("one two three four five six seven eight nine ten ")[0]
+    >>> robot_voice_effect(voice)
+    """
     import numpy as np
 
     rate = 44100
     print(aud_out.shape)
     effected = np.copy(aud_out)
-    divisor = 4
-    # effected = board(effected, sample_rate=rate)
-    effected = effected[:, ::divisor]
+    divisor = iterations
+
+    effected = effected[:, ::divisor + 1]
     offset = int(rate / 125)
-    effected = effected[:, :effected.shape[1] - offset] + effected[:, offset:]
-    effected = effected[:, :effected.shape[1] - offset] + effected[:, offset:]
-    effected = effected[:, :effected.shape[1] - offset] + effected[:, offset:]
-    effected = effected[:, :effected.shape[1] - offset] + effected[:, offset:]
+    for i in range(iterations):
+        effected = effected[:, :effected.shape[1] - offset] + effected[:, offset:]
+
     # normalize
     effected = effected / np.max(np.abs(effected))
     print(effected.shape)
-    rate = int(rate / divisor)
+    rate = int(rate / (divisor + 1))
 
     return effected, rate
 
@@ -228,6 +235,9 @@ def make_mp4(input_path, filepath, filename, width, height, keep, fps=30) -> str
     import os
     import glob
     import uuid
+    # clean the input path
+    input_path = os.path.abspath(input_path)
+
     image_input_path = os.path.join(input_path, "%05d.png")
     mp4_path = os.path.join(filepath, f"{str(filename)}.mp4")
     # check if the file exists, if it does, change mp4_path to include part of a uuid
@@ -236,9 +246,9 @@ def make_mp4(input_path, filepath, filename, width, height, keep, fps=30) -> str
         mp4_path = os.path.join(filepath, f"{str(filename)}_{str(uuid.uuid4()).split('-')[-1]}.mp4")
     mp4_path = mp4_path.split(".mp4")[0] + ".mp4"
     # make the mp4
-
+    exec_full_path = STORYBOARD_FFMPEG_PATH
     cmd = [
-        'ffmpeg',
+        exec_full_path,
         '-y',
         '-vcodec', 'png',
         '-r', str(fps),
@@ -267,6 +277,7 @@ def make_mp4(input_path, filepath, filename, width, height, keep, fps=30) -> str
 def make_mp4_from_images(image_list, filepath, filename, width, height, keep, fps=30,
                          filter_func=False) -> str:
     import os
+    import glob
     from PIL import Image
     """Make an mp4 from a list of images, using make_mp4"""
 
@@ -277,6 +288,10 @@ def make_mp4_from_images(image_list, filepath, filename, width, height, keep, fp
 
     # save the images to a temp folder
     temp_folder_path = os.path.join(filepath, "temp")
+    # remove all files in the input path
+    for file in glob.glob(os.path.join(temp_folder_path, "*")):
+        os.remove(file)
+
     if not os.path.exists(temp_folder_path):
         try:
             os.mkdir(temp_folder_path)
@@ -541,11 +556,14 @@ def test_limit_per_pixel_change_slice_optical_flow():
 
 def batched_renderer(SBIMulti, SBIMA_render_func, to_npy=False, rparam: DefaultRender = DefaultRender(),
                      early_stop=None):
+    import sys
     import time
     import numpy as np
     images_to_save = []
     batch_times = []
     start_time = time.time()
+    early_stop = sys.float_info.max if early_stop is None else early_stop
+
     for i in range(0, len(SBIMulti), MAX_BATCH_SIZE):
         max_batch_size = min(MAX_BATCH_SIZE, len(SBIMulti) - i)
         max_idx = min(i + MAX_BATCH_SIZE, len(SBIMulti))
@@ -584,8 +602,8 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
     import time
     import numpy as np
     from PIL import Image
-    images_to_save = {}
-    batch_times = []
+    images_to_save = []
+    bathc_times = []
     start_time = time.time()
     # start by rendering only half of the frames
     even_SBIM = SBIMultiArgs[::2]
@@ -596,67 +614,71 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
                                     to_npy=True,
                                     rparam=rparam,
                                     early_stop=early_stop)
-    SBIMultiArgs = SBIMultiArgs[:len(even_results) * 2]
-    # now render the other half of the frames if the difference between the two is greater than a threshold
-    threshold = 0.015 / 2
-    # threshold = 0.0
-    to_process = None
-    # first build a list of the indices of the SBIMultiArgs that need to be rendered based on the difference in the odd frames
-    # need something like [(odd_img_prev,even_idx_now,odd_img_next)]
-    for i in range(1, len(even_results) - 1):
-        difference = np.mean(np.square(even_results[i] - even_results[i + 1]))
-        print(difference)
-        if difference > threshold:
-            if to_process is None:
-                to_process = [(i * 2, odd_SBIM[i])]
-            else:
-                to_process.append((i * 2, odd_SBIM[i]))
-    # create the new SBIMultiArgs to render
-    new_SBIM = None
-    time_idxs = []
-    if to_process is not None:
-        print(
-            f'selective renderer found {len(to_process)} frames to process of {int(len(SBIMultiArgs) / 2)} possible frames')
-        for time_idx, sbim in to_process:
-            if new_SBIM is None:
-                new_SBIM = copy.deepcopy(sbim)
-                time_idxs.append(time_idx)
-            else:
-                new_SBIM += copy.deepcopy(sbim)
-                time_idxs.append(time_idx)
+    all_results = []
 
-    # render the new SBIMultiArgs
-    ti_sm_res = {}
-    if len(time_idxs) > 0:
-        smoothing_results = batched_renderer(new_SBIM,
-                                             SBIMA_render_func=SBIMA_render_func,
-                                             to_npy=True,
-                                             rparam=rparam,
-                                             early_stop=early_stop)
-        ti_sm_res = dict(zip(time_idxs, smoothing_results))
-
-    images_to_save = []
-    for time_idx in range(len(SBIMultiArgs)):
-        odd = time_idx % 2 == 0
-        even = not odd
-        if even:
+    for i in range(len(SBIMultiArgs)):
+        if i % 2 == 0:
             try:
-                images_to_save.append(even_results[int(time_idx / 2)])
-            except:
-                print(f'error with time_idx {time_idx} and tmp_results {len(even_results)}')
-        if odd:
-            if time_idx in ti_sm_res.keys():
-                images_to_save.append(ti_sm_res[time_idx])
-            else:
-                try:
-                    images_to_save.append(even_results[int(time_idx / 2)])
-                except:
-                    print(f'error with time_idx {time_idx}')
+                all_results.append((i,
+                                    0,
+                                 even_results[i // 2]))
+            except IndexError:
+                print(f"index error for {i}")
+        else:
+            all_results.append(None)
 
-    # convert the images to PIL images
-    images_to_save = [Image.fromarray(np.uint8(img * 255.0)) for img in images_to_save]
+
+    #for img in even_results:
+    #    all_results.extend([img,None])
+
+    for i in range(1,len(all_results),2):
+        if all_results[i] is None:
+            all_results[i] = SBIMultiArgs[i]
+
+    for i in range(0,len(all_results)-2,2):
+        imga = all_results[i][2]
+        imgb = all_results[i+2][2]
+        difference = np.mean(np.square(imga - imgb))
+        all_results[i+1] = (i+1,difference,all_results[i+1])
+
+    if isinstance(all_results[-1],SBMultiSampleArgs):
+        all_results[-1] = (len(all_results)-1,1,all_results[-1])
+
+    all_results_sorted_by_difference = \
+        sorted(all_results,
+               key=lambda x: np.mean(x[1]) * (isinstance(x, tuple))
+               , reverse=True)
+    threshold = 0.015 / 10
+    new_SBIM = None
+    for idx, difference, SBIMultiArg in all_results_sorted_by_difference:
+        if difference > threshold:
+            if new_SBIM is None:
+                new_SBIM = SBIMultiArg
+            else:
+                new_SBIM += SBIMultiArg
+        else:
+            break
+
+    if new_SBIM is not None:
+        new_results = batched_renderer(new_SBIM,
+                                       SBIMA_render_func=SBIMA_render_func,
+                                       to_npy=True,
+                                       rparam=rparam,
+                                       early_stop=early_stop)
+
+    results_zip = zip(all_results_sorted_by_difference,new_results)
+    results_done = [(*i[0],i[1]) for i in results_zip]
+
+    all_results_dict = {i[0]: i for i in all_results}
+    results_done_dict = {i[0]: [i[0],i[1],i[3]] for i in results_done}
+    all_results_dict.update(results_done_dict)
+    to_save = [i[2] for i in sorted(all_results_dict.values(),key=lambda x:x[0]) if isinstance(i[2],np.ndarray)]
+    for i in to_save:
+        images_to_save.append(Image.fromarray((i * 255).astype("uint8")))
     end_time = time.time()
     print(f"Time taken: {end_time - start_time}")
+
+
     return images_to_save
 
 
@@ -884,6 +906,11 @@ def get_frame_deltas(frames: List[Image.Image]) -> List[float]:
     return frame_deltas
 
 
+def get_linear_interpolation(param: PIL.Image, param1: PIL.Image, t: float):
+    """linear interpolation between two images"""
+    return Image.blend(param, param1, t)
+
+
 def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render_func, test=False,
                                   early_stop=-1):
     """
@@ -904,31 +931,36 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
         voice_over_text = ui_params[0]
 
     audio_f_path, vo_len_secs = create_voice_over_for_storyboard(voice_over_text, 1, DefaultRender.seconds)
-
+    # recalculate the storyboard params
     my_ren_p.num_frames_per_section = int((my_ren_p.fps * vo_len_secs) / my_ren_p.sections)
     my_ren_p.num_frames = my_ren_p.num_frames_per_section * my_ren_p.sections
     my_ren_p.seconds = vo_len_secs
 
     if test:
         sb_prompts = [
-            "dog :1.0 ate cat:0.0",
-            "dog :0.5 ate cat:0.5",
-            "dog :0.0 ate cat:1.0",
+            "dog:1.0 cat:0.0",
+            "dog:0.5 cat:0.5",
+            "dog:0.0 cat:1.0",
         ]
+        vo_len_secs = 10
+        my_ren_p.num_frames_per_section = int((my_ren_p.fps * vo_len_secs) / my_ren_p.sections)
+        my_ren_p.num_frames = my_ren_p.num_frames_per_section * my_ren_p.sections
+        my_ren_p.seconds = vo_len_secs
+
     else:
         sb_prompts = [i.prompt for i in storyboard_params]
 
-    sb_prompt = StoryBoardPrompt(sb_prompts, my_ren_p.seconds, True)
+    sb_prompt = StoryBoardPrompt(sb_prompts, my_ren_p.seconds, False)
 
     # TODO: need to find seeds/subseeds/weights for each prompt
 
     ez_p_func: Callable[[Any], SBIHyperParams] = lambda ti: SBIHyperParams(prompt=sb_prompt[ti],
-                                          negative_prompt=ui_params[1],
-                                          steps=ui_params[2],
-                                          seed=[1] * len(sb_prompt[ti]),
-                                          subseed=[-1] * len(sb_prompt[ti]),
-                                          subseed_strength=[0] * len(sb_prompt[ti]),
-                                          cfg_scale=ui_params[13])
+                                                                           negative_prompt=ui_params[1],
+                                                                           steps=ui_params[2],
+                                                                           seed=[1] * len(sb_prompt[ti]),
+                                                                           subseed=[-1] * len(sb_prompt[ti]),
+                                                                           subseed_strength=[0] * len(sb_prompt[ti]),
+                                                                           cfg_scale=ui_params[13])
 
     ez_r_func: Callable[[Any], Any] = lambda x: render_func(SBMultiSampleArgs(hyper=ez_p_func(x), render=my_ren_p))
 
@@ -950,7 +982,7 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
         frame_deltas = get_frame_deltas(list(imgs_by_seconds.values()))
 
         canidate_imgs_pairs_by_diff = []  # [delta, seconds_idx_1, seconds_idx_2]
-        for i in range(len(frame_deltas) ):
+        for i in range(len(frame_deltas)):
             time_pair = (imgs_by_seconds_keys_list[i], imgs_by_seconds_keys_list[i + 1])
             if time_pair not in done_pairs:
                 canidate_imgs_pairs_by_diff.append(
@@ -959,8 +991,18 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
         # sort so that the largest difference is first
         imgs_pairs_by_diff_sorted = sorted(canidate_imgs_pairs_by_diff, key=lambda x: x[0], reverse=True)
 
+        maxdiff = imgs_pairs_by_diff_sorted[0][0]
+        print(f"worst pair diff: {maxdiff}")
         # if the largest difference is less than some value then we are done
-        if imgs_pairs_by_diff_sorted[0][0] < 9.0:
+        # if we have rendered enough images, then stop
+
+        if maxdiff < 2.0:
+            if len(imgs_by_seconds) >= int(my_ren_p.num_frames * .8):
+                print(f'done because of low maxdiff')
+                break
+
+        if len(imgs_by_seconds) >= int(my_ren_p.num_frames * 1.2):
+            print(f'done because of too many frames")')
             break
 
         # get a batch of the worst images
@@ -974,26 +1016,50 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
         target_times = [np.mean(v[1:]) for v in worst_pairs_batch]
 
         # render the batch
-        imgs = ez_r_func(target_times).all_images[1:]
-        pairs_done_this_iter = pairs_to_do;
+        imgs = ez_r_func(target_times).all_images
+        imgs = imgs[1:] or [imgs[0]]
+        pairs_done_this_iter = pairs_to_do
         del pairs_to_do
 
         tt_imgs = zip(target_times, pairs_done_this_iter, imgs)
         # only keep the images that decrease the difference
         for t, p, i in tt_imgs:
-            diff_a = get_img_diff(imgs_by_seconds[p[0]], i)
-            diff_b = get_img_diff(i, imgs_by_seconds[p[1]])
+            imga = imgs_by_seconds[p[0]]
+            imgb = imgs_by_seconds[p[1]]
+            time_of_segment = p[1] - p[0]
+            segmnt_per_of_time = time_of_segment / sb_prompt.total_seconds
+
+            diff_a = get_img_diff(imga, i)
+            diff_b = get_img_diff(i, imgb)
+            # mean_ab = (diff_a + diff_b) / 2 # judging on this creates an no escape issue when one dif is 0
             # this is the difference between the two images
-            # TODO: this maybe can be safety retrieved from frame_deltas
-            diff_c = get_img_diff(imgs_by_seconds[p[0]], imgs_by_seconds[p[1]])
-            if (diff_a + diff_b) / 2 < diff_c:
+            # TODO: this maybe can be safely retrieved from frame_deltas
+            diff_orig = get_img_diff(imga, imgb)
+
+            if len(imgs_by_seconds) < int(my_ren_p.num_frames * .1):
+                frame_type = "keyframe"
+            elif diff_a == 0 or diff_b == 0:
+                print(f'frame {t} from pair {p} must be i frame because a diff is 0')
+                frame_type = "i"
+            elif time_of_segment < (1 / my_ren_p.fps):  # if the segment is less than a frame
+                frame_type = "i"
+            else:
+                frame_type = "g"
+
+            if frame_type == "keyframe" or frame_type == "g":
+                print(f'adding -{frame_type}- frame @ time: {t} for pair: {p}')
                 imgs_by_seconds[t] = i
+            elif frame_type == "i":
+                # report what we did not add
+                # print( f'not adding time: {t} for pair: {p}')
+                # add a linear interpolation between the two images
+                print(f'adding -{frame_type}- (interpolation) frame between {p[0]} and {p[1]}')
+                imgs_by_seconds[t] = get_linear_interpolation(imgs_by_seconds[p[0]], imgs_by_seconds[p[1]], .5)
 
-        # if we have rendered enough images, then stop
-        if len(imgs_by_seconds) >= my_ren_p.num_frames:
-            break
+    for k, v in imgs_by_seconds.items():
+        print(k)
+    print(f'total of {len(imgs_by_seconds)} frames')
 
-    print(imgs_by_seconds)
     images_to_save = [i for i in imgs_by_seconds.values()]
     for k, v in imgs_by_seconds.items():
         v.save(f'tmp_{k}.png')
@@ -1010,6 +1076,8 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
 
     # the audio is rendered first, attempting to reach some target length.
     # the video is rendered second, to match the length of the resultant audio
+    from modules.shared import opts,Options
+
 
     mytext = ui_params[0]
     if test or test_render:
@@ -1053,6 +1121,9 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
             steps=base_Hyper.steps,
             cfg_scale=base_Hyper.cfg_scale,
         )
+    # trim off the extra frame
+    if base_SBIMulti[0].hyper.prompt == "":
+        base_SBIMulti = base_SBIMulti[1:]
 
     if not test or test_render:
         # images_to_save = self.batched_renderer(base_SBIMulti, early_stop, self.storyboard)
