@@ -29,3 +29,6 @@ notification.mp3
 /textual_inversion
 .vscode
 /extensions
+/modules/storysquad_storyboard/outputs/
+/modules/storysquad_storyboard/rendering/
+/modules/storysquad_storyboard/test/
