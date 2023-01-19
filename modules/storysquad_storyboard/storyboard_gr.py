@@ -720,7 +720,7 @@ class StoryBoardGradio:
                             self.all_components["story_board_render"] = gr.Video()
                             self.all_components["story_board_audio"]= gr.Audio()
 
-                            if not sb_env.STORYBOARD_PRODUCT=="clash":
+                            if sb_env.STORYBOARD_PRODUCT=="clash":
                                 self.all_components["story_board_render"].visible = False
                                 self.all_components["story_board_audio"].visible = False
 
