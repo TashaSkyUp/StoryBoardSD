@@ -34,7 +34,7 @@ def setup_color_correction(image):
     return correction_target
 
 
-def apply_color_correction(correction, image):
+def apply_color_correction(correction, image:np.ndarray):
     logging.info("Applying color correction.")
     image = Image.fromarray(cv2.cvtColor(exposure.match_histograms(
         cv2.cvtColor(
@@ -526,11 +526,13 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 ttt = time.thread_time()
                 uc = prompt_parser.get_learned_conditioning(shared.sd_model, tuple(len(prompts) * [p.negative_prompt]), p.steps)
                 print("starting to get conditionings - part2")
-                c = prompt_parser.get_multicond_learned_conditioning(shared.sd_model, tuple(prompts), p.steps)
-                print(f'learned conditioning time: {time.thread_time() - ttt}')
-                #print the lru cache info
-                print(f'learned conditioning cache info: {prompt_parser.get_learned_conditioning.cache_info()}')
-                print(f'multicond learned conditioning cache info: {prompt_parser.get_multicond_learned_conditioning.cache_info()}')
+                c = prompt_parser.get_multicond_learned_conditioning(
+                    shared.sd_model,
+                    tuple(prompts),
+                    p.steps,
+                    debug=True
+                )
+
 
             if len(model_hijack.comments) > 0:
                 for comment in model_hijack.comments:
