@@ -5,7 +5,7 @@ import numbers
 from dataclasses import dataclass
 from typing import List, Any
 
-DEV_MODE = os.getenv("STORYBOARD_DEV_MODE", False) != '0'
+DEV_MODE = os.getenv("STORYBOARD_DEV_MODE", "False") == "True"
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
     "negative_prompt": "",
