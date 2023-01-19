@@ -535,7 +535,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                     p.steps,
                     debug=True
                 )
-
+                print(f'part2 time: {time.time() - ttt}')
 
             if len(model_hijack.comments) > 0:
                 for comment in model_hijack.comments:
