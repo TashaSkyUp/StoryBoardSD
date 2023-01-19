@@ -523,8 +523,11 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
 
             with devices.autocast():
                 print("starting to get conditionings - part1")
-                ttt = time.thread_time()
+                ttt = time.time()
                 uc = prompt_parser.get_learned_conditioning(shared.sd_model, tuple(len(prompts) * [p.negative_prompt]), p.steps)
+                print(f"part1 time: {time.time-ttt}")
+
+                ttt = time.time()
                 print("starting to get conditionings - part2")
                 c = prompt_parser.get_multicond_learned_conditioning(
                     shared.sd_model,
@@ -581,10 +584,9 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                     image = apply_color_correction(p.color_corrections[i], image)
 
                 image = apply_overlay(image, p.paste_to, i, p.overlay_images)
-                ttt= time.thread_time()
                 if opts.samples_save and not p.do_not_save_samples:
                     images.save_image(image, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p)
-                print(f'save image time: {time.thread_time() - ttt}')
+
                 text = infotext(iter_num, i)
                 infotexts.append(text)
                 if opts.enable_pnginfo:
