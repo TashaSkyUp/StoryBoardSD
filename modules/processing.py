@@ -674,6 +674,7 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
             samples = self.sampler.sample(self, x, conditioning, unconditional_conditioning, image_conditioning=self.txt2img_image_conditioning(x))
             return samples
 
+        # everything below here is for the highres fix
         x = create_random_tensors([opt_C, self.firstphase_height // opt_f, self.firstphase_width // opt_f], seeds=seeds, subseeds=subseeds, subseed_strength=self.subseed_strength, seed_resize_from_h=self.seed_resize_from_h, seed_resize_from_w=self.seed_resize_from_w, p=self)
         samples = self.sampler.sample(self, x, conditioning, unconditional_conditioning, image_conditioning=self.txt2img_image_conditioning(x, self.firstphase_width, self.firstphase_height))
 
@@ -688,13 +689,30 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
 
             batch_images = []
             for i, x_sample in enumerate(lowres_samples):
-                x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
-                x_sample = x_sample.astype(np.uint8)
-                image = Image.fromarray(x_sample)
-                image = images.resize_image(0, image, self.width, self.height)
-                image = np.array(image).astype(np.float32) / 255.0
-                image = np.moveaxis(image, 2, 0)
-                batch_images.append(image)
+                if not numpy_out:
+                    # move the sample to the cpu, covert to numpy, put the channels in the right place and scale the values to 0-255
+                    x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
+                    # convert the image to uint8 bytes
+                    x_sample = x_sample.astype(np.uint8)
+                    # convert the image to a PIL image
+                    image = Image.fromarray(x_sample)
+                    # resize the image to the desired size
+                    image = images.resize_image(0, image, self.width, self.height)
+                    # convert the image back to a numpy array
+                    image = np.array(image).astype(np.float32) / 255.0
+                    # move the channels back.
+                    image = np.moveaxis(image, 2, 0)
+                    batch_images.append(image)
+                else:
+                    # keep x_sample samples on the gpu but resize them to the desired size, use torch
+                    image = torch.nn.functional.interpolate(x_sample.unsqueeze(0),
+                                                            size=(self.height,
+                                                                  self.width),
+                                                            mode="lanczos")
+
+                    batch_images.append(image)
+
+
 
             decoded_samples = torch.from_numpy(np.array(batch_images))
             decoded_samples = decoded_samples.to(shared.device)
