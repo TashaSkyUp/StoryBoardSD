@@ -525,7 +525,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 print("starting to get conditionings - part1")
                 ttt = time.time()
                 uc = prompt_parser.get_learned_conditioning(shared.sd_model, tuple(len(prompts) * [p.negative_prompt]), p.steps)
-                print(f"part1 time: {time.time-ttt}")
+                print(f"part1 time: {time.time()-ttt}")
 
                 ttt = time.time()
                 print("starting to get conditionings - part2")
@@ -565,7 +565,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             for i, x_sample in enumerate(x_samples_ddim):
                 x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
                 x_sample = x_sample.astype(np.uint8)
-
+                # TODO: add ability to return sample directly
                 if p.restore_faces:
                     if opts.save and not p.do_not_save_samples and opts.save_images_before_face_restoration:
                         images.save_image(Image.fromarray(x_sample), p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p, suffix="-before-face-restoration")
@@ -666,7 +666,7 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
             self.truncate_x = int(self.firstphase_width - firstphase_width_truncated) // opt_f
             self.truncate_y = int(self.firstphase_height - firstphase_height_truncated) // opt_f
 
-    def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength):
+    def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength, numpy_out=False):
         self.sampler = sd_samplers.create_sampler_with_index(sd_samplers.samplers, self.sampler_index, self.sd_model)
 
         if not self.enable_hr:

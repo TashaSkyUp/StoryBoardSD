@@ -429,7 +429,7 @@ class StoryBoardPrompt:
                               section_percent)
                           ])
 
-        return "".join([f"({w[0]}:{w[1]:.5f})" for w in prmpt])
+        return "".join([f"({w[0]}:{w[1]:.8f})" for w in prmpt])
 
     def __getitem__(self, time_seconds: float) -> str:
         return self(time_seconds)

@@ -137,13 +137,13 @@ def create_voice_over_for_storyboard(text_to_read, speech_speed, vo_length_sec):
 
     t, (aud_out, aud_length_secs) = quick_timer(get_samples_from_gtts, text_to_read)
     print(f"get_samples_from_gtts: latency {t}")
-    if aud_length_secs < vo_length_sec:
-        t, (aud_out_slow, aud_length_secs_slow) = quick_timer(get_samples_from_gtts, text_to_read, slow=True)
+
+    t, (aud_out_slow, aud_length_secs_slow) = quick_timer(get_samples_from_gtts, text_to_read, slow=True)
     reg_dist = (vo_length_sec - aud_length_secs) ** 2
     slow_dist = (vo_length_sec - aud_length_secs_slow) ** 2
     if slow_dist < reg_dist:
         aud_out = aud_out_slow
-        aud_length_secs = aud_length_secs_slow
+        audio_length_secs = aud_length_secs_slow
 
     t, (data, data_sample_rate) = quick_timer(robot_voice_effect, aud_out, iterations=0)
     print(f'robot_voice_effect latency: {t}')
@@ -338,15 +338,19 @@ def get_frame_values_for_prompt_word_weights(prompts, num_frames):  # list[secti
     for section in sections:
         start: tuple(str, float) = section[0]
         end: tuple(str, float) = section[1]
-        word_frame_weights = []
+        word_frame_weights:[tuple(str,float)] = []
         for i in range(num_frames):
             frame_weights = []
             for word_idx, word_at_pos in enumerate(start):
                 # format like: ('dog', 0.0)
-                word_start_weight = start[word_idx][1]
-                word_end_weight = end[word_idx][1]
-                word_frame_weight = \
-                    word_start_weight + (word_end_weight - word_start_weight) * (i / (num_frames - 1))
+                word_start_weight = np.float16(start[word_idx][1])
+                word_end_weight = np.float16(end[word_idx][1])
+                #word_frame_weight = \
+                #    word_start_weight + (word_end_weight - word_start_weight) * (i / (num_frames - 1))
+                #percent = np.divide(i,np.subtract(num_frames,1))
+                word_frame_weight=np.interp(i, [0, num_frames - 1], [word_start_weight, word_end_weight])
+                #word_frame_weight =np.interp()
+                #    word_start_weight + (word_end_weight - word_start_weight) * (i / (num_frames - 1))
                 frame_weights.append((word_at_pos[0], word_frame_weight))
             word_frame_weights.append(frame_weights)
         sections_frames.append(word_frame_weights)
@@ -1102,7 +1106,7 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
     prompts = []
     for section in prompt_sections:
         for frame in section:
-            prompts.append(" ".join([f"({word}:{weight})" for word, weight in frame]))
+            prompts.append(" ".join([f"({word}:{weight:.8f})" for word, weight in frame]))
     seeds = get_frame_seed_data(storyboard_params, my_render_params.num_frames_per_section)
     # create a base SBIRenderArgs object
     # feature: this should allow the user to change the settings for rendering

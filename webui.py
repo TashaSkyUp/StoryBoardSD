@@ -135,8 +135,12 @@ def webui():
     while 1:
         demo = modules.ui.create_ui(wrap_gradio_gpu_call=wrap_gradio_gpu_call)
 
-        #app, local_url, share_url = demo.queue(default_enabled=False).launch(
-        app, local_url, share_url = demo.launch(
+        app, local_url, share_url = demo.queue(
+            concurrency_count=1,
+            status_update_rate=.5,
+            max_size=2
+        ).launch(
+        #app, local_url, share_url = demo.launch(
             share=cmd_opts.share,
             server_name="0.0.0.0" if cmd_opts.listen else None,
             server_port=cmd_opts.port,

@@ -690,10 +690,9 @@ Requested path was: {f}
 def create_ui(wrap_gradio_gpu_call):
     import modules.img2img
     import modules.txt2img
-    from modules.storysquad_storyboard.storyboard import DEV_MODE as SB_DEV_MODE
+    from modules.storysquad_storyboard.env import STORYBOARD_DEV_MODE,STORYBOARD_PRODUCT
 
 
-    # if modules.story_squad.DEV_MODE:
     story_squad_interface = StoryboardGr.StoryBoardGradio().get_story_squad_ui()
 
     with gr.Blocks(analytics_enabled=False) as txt2img_interface:
@@ -1709,7 +1708,7 @@ def create_ui(wrap_gradio_gpu_call):
         (train_interface, "Train", "ti"),
     ]
 
-    if SB_DEV_MODE: interfaces.append((story_squad_interface, "Story Board", "story_squad"))
+    if STORYBOARD_DEV_MODE & (STORYBOARD_PRODUCT == "expert"): interfaces.append((story_squad_interface, "Story Board", "story_squad"))
 
     css = ""
 
@@ -1870,7 +1869,7 @@ def create_ui(wrap_gradio_gpu_call):
         with open(ui_config_file, "w", encoding="utf8") as file:
             json.dump(ui_settings, file, indent=4)
 
-    if not SB_DEV_MODE:
+    if not (STORYBOARD_DEV_MODE & (STORYBOARD_PRODUCT =="expert")):
         tabs.visible = False
         mod = [b.__setattr__("visible", False) for b in demo.blocks.values() if
                "elem_id" in dir(b) and b.elem_id == "quicksettings"]
