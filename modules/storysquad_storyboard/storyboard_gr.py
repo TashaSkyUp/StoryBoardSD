@@ -981,6 +981,7 @@ class StoryBoardGradio:
                                                },
                                       queue=True,
                                       cancels=gen_evt
+
                                       )
 
                                 #b.click(
