@@ -65,7 +65,7 @@ def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImage
     for i in range(len(p.seed)):
         if p.seed[i] == -1:
             p.seed[i] = modules.processing.get_fixed_seed(-1)
-
+    p.do_not_save_samples=True
     processed = process_images(p)
 
     shared.total_tqdm.clear()

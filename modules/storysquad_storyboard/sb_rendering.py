@@ -137,13 +137,13 @@ def create_voice_over_for_storyboard(text_to_read, speech_speed, vo_length_sec):
 
     t, (aud_out, aud_length_secs) = quick_timer(get_samples_from_gtts, text_to_read)
     print(f"get_samples_from_gtts: latency {t}")
-    if aud_length_secs < vo_length_sec:
-        t, (aud_out_slow, aud_length_secs_slow) = quick_timer(get_samples_from_gtts, text_to_read, slow=True)
+
+    t, (aud_out_slow, aud_length_secs_slow) = quick_timer(get_samples_from_gtts, text_to_read, slow=True)
     reg_dist = (vo_length_sec - aud_length_secs) ** 2
     slow_dist = (vo_length_sec - aud_length_secs_slow) ** 2
     if slow_dist < reg_dist:
         aud_out = aud_out_slow
-        aud_length_secs = aud_length_secs_slow
+        audio_length_secs = aud_length_secs_slow
 
     t, (data, data_sample_rate) = quick_timer(robot_voice_effect, aud_out, iterations=0)
     print(f'robot_voice_effect latency: {t}')

@@ -1,25 +1,14 @@
-from .sb_sd_render import *
-import modules.storysquad_storyboard.env as sb_env
+print(__name__)
+from modules.storysquad_storyboard.sb_rendering import *
 import gradio.components
 import json
-
-from .storyboard import DEFAULT_HYPER_PARAMS
-
-from .sb_rendering import *
-
 from dataclasses import dataclass
-
-print(__name__)
 from typing import List
 
 keys_for_ui_in_order = ["prompt", "negative_prompt", "steps", "sampler_index", "width", "height", "restore_faces",
                          "tiling", "batch_count", "batch_size",
                          "seed", "subseed", "subseed_strength", "cfg_scale"]
-DEV_MODE = sb_env.STORYBOARD_DEV_MODE
-if DEV_MODE:
-    ONLY_USE_NOUNS = False
-else:
-    ONLY_USE_NOUNS = True
+
 
 # TODO: consider adding a feature to render more results than the Image explorer can show at one time
 MAX_IEXP_SIZE = 9
@@ -33,7 +22,11 @@ class BenchMarkSettings:
     stop_after_mins = 10
 
 
-if __name__ != "__main__" and __name__ != "story_squad":
+if __name__ != "__main__" and __name__ != "storyboard_gr":
+    from modules.storysquad_storyboard.storyboard import DEFAULT_HYPER_PARAMS
+    from modules.storysquad_storyboard.sb_sd_render import *
+    import modules.storysquad_storyboard.env as sb_env
+
     import random
     import doctest
     import numpy as np
@@ -42,6 +35,12 @@ if __name__ != "__main__" and __name__ != "story_squad":
     from collections import OrderedDict
     import modules
     from modules.processing import StableDiffusionProcessingTxt2Img
+
+    DEV_MODE = sb_env.STORYBOARD_DEV_MODE
+    if DEV_MODE:
+        ONLY_USE_NOUNS = False
+    else:
+        ONLY_USE_NOUNS = False
 else:
     # TODO: figure out how to load the correct modules when running this file directly for doctests
     import copy
@@ -142,6 +141,16 @@ class SimpleExplorerModel(ExplorerModel):
         hyper_params = simple_param_gen_func(param_history,num=9)[1:]
         return SBMultiSampleArgs(render_params, hyper_params)
 
+
+def get_files_at_path(path=None) -> List[str]:
+    """
+    >>> get_files_at_path(path="/home/ubuntu/StoryBoardSD_dev/SB_RENDERS")
+    []
+    """
+    root_files = [os.path.join(path, f) for f in os.listdir(path)
+                  if os.path.isfile(os.path.join(path, f))]
+    root_files.sort(key=os.path.getmtime, reverse=True)
+    return root_files
 def get_test_storyboard():
     test_data = [
         "(dog:1) cat:0",
@@ -200,7 +209,18 @@ class StoryBoardGradio:
         state["history"] = []
         state["im_explorer_hparams"] = []
         sb_imgs = []
-        return state,*[random_noise_image() for _ in range(12)]
+
+        sb_img_dict = {k:random_noise_image() for k
+                       in self.all_components["story_board_images"]
+                       +self.all_components["im_explorer"]["images"]}
+
+        sb_txt_dict = {k:"" for k in self.all_components["im_explorer"]["texts"]}
+
+        return {
+            self.all_state:state,
+            **sb_img_dict,
+            **sb_txt_dict
+            }
 
     def render_storyboard_benchmark(self, *args):
 
@@ -692,14 +712,15 @@ class StoryBoardGradio:
                             self.all_components["story_board_images"] = [image1, image2, image3]
 
 
-                def get_files_at_path(path=None) -> List[str]:
-                    root_files = [os.path.join(path, f) for f in os.listdir(path)
-                                  if os.path.isfile(os.path.join(path, f))]
-                    root_files.sort(key=os.path.getmtime, reverse=True)
-                    return root_files
 
                 def refresh_renders_display(idx):
-                    video_file = get_files_at_path(path=sb_env.STORYBOARD_RENDER_PATH)[idx]
+                    video_file = get_files_at_path(path=sb_env.STORYBOARD_RENDER_PATH)
+                    if idx>=len(video_file)-1:
+                        return None
+                    if isinstance(video_file,list):
+                        video_file=video_file[idx]
+                    else:
+                        video_file = video_file
                     out = videos_comps[idx].update(visible=True, value=video_file)
                     return out
 
@@ -837,7 +858,15 @@ class StoryBoardGradio:
                         gen_button =self.all_components["submit"]
                         gen_button.click(**generate_main_func_kwargs)
                         gen_button.click(fn=lambda: gr.update(visible=False),
-                                                            outputs=[self.all_components["submit"]])
+                        outputs=[self.all_components["submit"]])
+                    if "events for use/promote to storyboard button":
+                        for b in self.all_components["im_explorer"]["buttons"]:
+                            if "use" in b.value.lower():
+                                b.click(
+                                    lambda x: gr.update(visible=True) if len(x["story_board"]) != 2 else gr.update(visible=False),
+                                    inputs=self.all_state,
+                                    outputs=[image_explorer]
+                                )
 
 
 
@@ -852,18 +881,20 @@ class StoryBoardGradio:
         """
 
 
-        self.all_components["param_inputs"]["prompt"].change(self.reset_story_board,
-                                                                     inputs =[
-                                                                         self.all_state,
-                                                                         *self.all_components["story_board_images"],
-                                                                         *self.all_components["im_explorer"]["images"]
-                                                                         ],
-                                                                     outputs=[
-                                                                         self.all_state,
-                                                                         *self.all_components["story_board_images"],
-                                                                         *self.all_components["im_explorer"]["images"]
-                                                                         ]
-                                                                     )
+        self.all_components["param_inputs"]\
+            ["prompt"].change(self.reset_story_board,
+                         inputs ={
+                             self.all_state,
+                             *self.all_components["story_board_images"],
+                             *self.all_components["im_explorer"]["images"]
+                         },
+                         outputs={
+                             self.all_state,
+                             *self.all_components["story_board_images"],
+                             *self.all_components["im_explorer"]["images"],
+                             *self.all_components["im_explorer"]["texts"]
+                            }
+                         )
 
 
         self.all_components["dev_render"].click(self.on_render_storyboard_dev,
@@ -874,16 +905,7 @@ class StoryBoardGradio:
                                             outputs=[self.all_state, self.all_components["story_board_render"]]
                                             )
 
-        #self.all_components["submit"].click(self.on_generate,
-        #                                    inputs=[self.all_state,
-        #                                            *self.all_components["param_inputs"]["list_for_generate"]
-        #                                            ],
-        #                                    outputs=[self.all_state,
-        #                                             *self.all_components["im_explorer"]["images"],
-        #                                             *self.all_components["im_explorer"]["texts"],
-        #                                             *self.all_components["story_board_images"]
-        #                                             ]
-        #                                    )
+
         self.all_components["benchmark"].click(self.render_storyboard_benchmark,
                                             inputs=[self.all_state,
                                                     *self.all_components["param_inputs"]["list_for_generate"]
@@ -936,6 +958,11 @@ class StoryBoardGradio:
                                    *self.all_components["im_explorer"]["texts"],
                                    ]
                           )
+            but_use.click(
+                lambda x: gr.update(visible=True) if len(x["story_board"]) == 2 else gr.update(visible=False),
+                inputs=self.all_state,
+                outputs=[self.all_components["render"]]
+            )
             but_use.click(
                 lambda x: gr.update(visible=True) if len(x["story_board"]) == 2 else gr.update(visible=False),
                 inputs=self.all_state,
