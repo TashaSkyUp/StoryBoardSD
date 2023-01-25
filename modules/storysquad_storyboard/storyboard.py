@@ -133,7 +133,7 @@ def get_frame_seed_data(board_params, _num_frames) -> [()]:  # List[(seed,subsee
     return all_frames
 
 
-def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
+def get_prompt_words_and_weights_list_old(prompt) -> List[List[str]]:
     """
     >>> get_prompt_words_and_weights_list("hello:1 world:.2 how are (you:1.0)")
     [('hello', 1.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
@@ -167,7 +167,31 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
             w = 1.0
         out.append((word_weight_pair[0], w))
     return out
-
+def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
+    """
+    >>> get_prompt_words_and_weights_list("")
+    []
+    >>> get_prompt_words_and_weights_list("hello")
+    [('hello', 1.0)]
+    >>> get_prompt_words_and_weights_list("hello:0.5")
+    [('hello', 0.5)]
+    >>> get_prompt_words_and_weights_list("hello:.5 world")
+    [('hello', 0.5), ('world', 1.0)]
+    >>> get_prompt_words_and_weights_list("hello:5 world:0.2")
+    [('hello', 5.0), ('world', 0.2)]
+    >>> get_prompt_words_and_weights_list("hello:5 (world:0.2) how (are) you")
+    [('hello', 5.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
+    """
+    prompt = sanitize_prompt(prompt)
+    words = prompt.split(" ")
+    possible_word_weight_pairs = [i.split(":") for i in words]
+    return [
+        (word_weight_pair[0], float(word_weight_pair[1]))
+        if len(word_weight_pair) == 2
+        else (word_weight_pair[0], 1.0)
+        for word_weight_pair in possible_word_weight_pairs
+        if word_weight_pair[0] != ""
+    ]
 
 def sanitize_prompt(prompt):
     prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
