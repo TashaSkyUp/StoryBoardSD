@@ -172,6 +172,14 @@ def get_test_storyboard():
 class StoryBoardGradio:
     def __init__(self):
         import gradio as gr
+        class comp_helper:
+            story_squad_interface = None
+            render_button = None
+            generate_button = None
+            robot_dreams = None
+            files_interface = None
+
+        self.comp_helper = comp_helper
 
         self.DefaultRender = DefaultRender()
 
@@ -642,6 +650,8 @@ class StoryBoardGradio:
                         DEFAULT_HYPER_PARAMS.subseed_strength)
 
         with gr.Blocks() as story_squad_interface:
+            self.comp_helper.story_squad_interface = story_squad_interface
+
             self.all_state["history"] = []
             self.all_state["im_explorer_hparams"] = []
             self.all_state["story_board"] = []
@@ -675,11 +685,13 @@ class StoryBoardGradio:
 
                             self.all_components["submit"] = gr.Button('Generate', elem_id=f"{id_part}_generate",
                                                                           variant='primary')
+                            self.comp_helper.generate_button = self.all_components["submit"]
 
                             gr.HTML(value="<span style='padding: 20px 20px 20px 20px;'></span>")
 
                             self.all_components["render"] = gr.Button('Render', elem_id=f"{id_part}_render",
                                                                           variant='primary')
+                            self.comp_helper.render_button = self.all_components["render"]
                             # hide the render button if we are in a non-dev mode of clash
                             if sb_env.STORYBOARD_PRODUCT == "clash" and not sb_env.STORYBOARD_DEV_MODE:
                                 self.all_components["render"].visible = False
@@ -726,9 +738,11 @@ class StoryBoardGradio:
 
                 with gr.Blocks() as interfaces:
                     with gr.Column() as robot_dreams:
+                        self.comp_helper.robot_dreams = robot_dreams
                         gr.HTML("<hr>")
                         make_gr_label("RobotDreams")
                         with gr.Row(scale=1) as image_explorer:
+                            self.comp_helper.image_explorer = image_explorer
                             with gr.Blocks():
                                 for r in range(3):
                                     with gr.Row(equal_height=True):
@@ -746,6 +760,8 @@ class StoryBoardGradio:
                                 self.all_components["story_board_audio"].visible = False
 
                     with gr.Column() as files_interface:
+                        self.comp_helper.files_interface = files_interface
+
                         files_interface.visible = False
                         # files_tab.select(lambda: gr.Tabs.update(selected=1), None, interface_tabs)
                         videos_comps = []
