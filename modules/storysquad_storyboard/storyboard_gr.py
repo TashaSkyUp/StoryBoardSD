@@ -213,6 +213,8 @@ class StoryBoardGradio:
 
 
     def reset_story_board(self, state,*sb_imgs):
+        import gradio as gr
+        # TODO: make sure this resets the render button and the generate button and the image explorerer area
         state["story_board"] = []
         state["history"] = []
         state["im_explorer_hparams"] = []
@@ -224,10 +226,32 @@ class StoryBoardGradio:
 
         sb_txt_dict = {k:"" for k in self.all_components["im_explorer"]["texts"]}
 
-        return {
-            self.all_state:state,
-            **sb_img_dict,
-            **sb_txt_dict
+        if sb_env.STORYBOARD_PRODUCT=="clash":
+            return {
+                self.all_state:state,
+                **sb_img_dict,
+                **sb_txt_dict,
+                self.comp_helper.robot_dreams:gr.Column.update(visible=True),
+                self.comp_helper.render_button:gr.update(visible=False),
+                self.comp_helper.generate_button:gr.update(visible=True),
+            }
+        elif sb_env.STORYBOARD_PRODUCT=="market":
+            return {
+                self.all_state:state,
+                **sb_img_dict,
+                **sb_txt_dict,
+                self.comp_helper.robot_dreams:gr.Column.update(visible=True),
+                self.comp_helper.render_button:gr.update(visible=False),
+                self.comp_helper.generate_button:gr.update(visible=True),
+            }
+        if sb_env.STORYBOARD_PRODUCT=="expert":
+            return {
+                self.all_state:state,
+                **sb_img_dict,
+                **sb_txt_dict,
+                self.comp_helper.robot_dreams:gr.Column.update(visible=True),
+                self.comp_helper.render_button:gr.update(visible=True),
+                self.comp_helper.generate_button:gr.update(visible=True),
             }
 
     def render_storyboard_benchmark(self, *args):
@@ -574,6 +598,8 @@ class StoryBoardGradio:
         import gradio as gr
         self.all_components["param_inputs"] = {}
 
+
+
         with gr.Blocks() as param_area:
             with gr.Column(variant='panel'):
                 # so what we want here is for when is:
@@ -625,7 +651,7 @@ class StoryBoardGradio:
                     self.all_components["param_inputs"]["batch_size"] = self.ordered_list_of_param_inputs[-1]
 
 
-                if DEV_MODE:
+                if sb_env.STORYBOARD_PRODUCT == "expert":
                     self.ordered_list_of_param_inputs.append(
                         gr.Slider(minimum=1.0, maximum=30.0, step=0.5, label='CFG Scale', value=7.0))
                     self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
@@ -640,13 +666,23 @@ class StoryBoardGradio:
                     self.all_components["param_inputs"]["seed_resize_from_h"], \
                     self.all_components["param_inputs"]["seed_resize_from_w"], \
                     self.all_components["param_inputs"]["seed_checkbox"] = self.ordered_list_of_param_inputs[-8:]
-                else:
+
+                elif sb_env.STORYBOARD_PRODUCT == "market":
                     self.ordered_list_of_param_inputs.append(
                         gr.Slider(minimum=4.0, maximum=10.0, step=0.1, label='Configuration Scale', value=7.0))
                     self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
                     self.all_components["param_inputs"]["seed"] = gr.State(DEFAULT_HYPER_PARAMS.seed)
                     self.all_components["param_inputs"]["subseed"] = gr.State(DEFAULT_HYPER_PARAMS.subseed)
                     self.all_components["param_inputs"]["subseed_strength"]= gr.State(
+                        DEFAULT_HYPER_PARAMS.subseed_strength)
+
+                elif sb_env.STORYBOARD_PRODUCT == "clash":
+                    self.ordered_list_of_param_inputs.append(
+                        gr.State(7.0))
+                    self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
+                    self.all_components["param_inputs"]["seed"] = gr.State(DEFAULT_HYPER_PARAMS.seed)
+                    self.all_components["param_inputs"]["subseed"] = gr.State(DEFAULT_HYPER_PARAMS.subseed)
+                    self.all_components["param_inputs"]["subseed_strength"] = gr.State(
                         DEFAULT_HYPER_PARAMS.subseed_strength)
 
         with gr.Blocks() as story_squad_interface:
@@ -676,6 +712,8 @@ class StoryBoardGradio:
                         lines=1,
                         placeholder="Negative prompt"
                     )
+                    if sb_env.STORYBOARD_PRODUCT =="clash":
+                        self.all_components["param_inputs"]["negative_prompt"].visible = False
                     param_area.render()
 
                 with gr.Column(scale=1):
@@ -881,7 +919,7 @@ class StoryBoardGradio:
                                 b.click(
                                     lambda x: gr.update(visible=True) if len(x["story_board"]) != 2 else gr.update(visible=False),
                                     inputs=self.all_state,
-                                    outputs=[image_explorer]
+                                    outputs=[self.comp_helper.robot_dreams]
                                 )
 
 
@@ -908,7 +946,10 @@ class StoryBoardGradio:
                              self.all_state,
                              *self.all_components["story_board_images"],
                              *self.all_components["im_explorer"]["images"],
-                             *self.all_components["im_explorer"]["texts"]
+                             *self.all_components["im_explorer"]["texts"],
+                             self.comp_helper.robot_dreams,
+                             self.comp_helper.render_button,
+                             self.comp_helper.generate_button,
                             }
                          )
 
