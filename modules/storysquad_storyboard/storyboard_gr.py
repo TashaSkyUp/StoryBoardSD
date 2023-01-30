@@ -915,12 +915,25 @@ class StoryBoardGradio:
                         outputs=[self.all_components["submit"]])
                     if "events for use/promote to storyboard button":
                         for b in self.all_components["im_explorer"]["buttons"]:
+
+                            #event that manages robot dreams and the render and generate buttons
                             if "use" in b.value.lower():
                                 b.click(
-                                    lambda x: gr.update(visible=True) if len(x["story_board"]) != 2 else gr.update(visible=False),
+                                    lambda x: [gr.update(visible=True), #dreams
+                                               gr.update(visible=False),#generate
+                                               gr.update(visible=False) #render
+                                               ] if len(x["story_board"]) != 2
+                                    else [gr.update(visible=False), #dreams
+                                          gr.update(visible=False), #generate
+                                          gr.update(visible=False)  #render
+                                          ],
                                     inputs=self.all_state,
-                                    outputs=[self.comp_helper.robot_dreams]
+                                    outputs=[self.comp_helper.robot_dreams,
+                                             self.comp_helper.generate_button,
+                                             self.comp_helper.render_button
+                                             ]
                                 )
+
 
 
 
