@@ -621,28 +621,24 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
             try:
                 all_results.append((i,
                                     0,
-                                 even_results[i // 2]))
+                                    even_results[i // 2]))
             except IndexError:
                 print(f"index error for {i}")
         else:
             all_results.append(None)
 
-
-    #for img in even_results:
-    #    all_results.extend([img,None])
-
-    for i in range(1,len(all_results),2):
+    for i in range(1, len(all_results), 2):
         if all_results[i] is None:
             all_results[i] = SBIMultiArgs[i]
 
-    for i in range(0,len(all_results)-2,2):
+    for i in range(0, len(all_results) - 2, 2):
         imga = all_results[i][2]
-        imgb = all_results[i+2][2]
+        imgb = all_results[i + 2][2]
         difference = np.mean(np.square(imga - imgb))
-        all_results[i+1] = (i+1,difference,all_results[i+1])
+        all_results[i + 1] = (i + 1, difference, all_results[i + 1])
 
-    if isinstance(all_results[-1],SBMultiSampleArgs):
-        all_results[-1] = (len(all_results)-1,1,all_results[-1])
+    if isinstance(all_results[-1], SBMultiSampleArgs):
+        all_results[-1] = (len(all_results) - 1, 1, all_results[-1])
 
     all_results_sorted_by_difference = \
         sorted(all_results,
@@ -666,13 +662,13 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
                                        rparam=rparam,
                                        early_stop=early_stop)
 
-    results_zip = zip(all_results_sorted_by_difference,new_results)
-    results_done = [(*i[0],i[1]) for i in results_zip]
+    results_zip = zip(all_results_sorted_by_difference, new_results)
+    results_done = [(*i[0], i[1]) for i in results_zip]
 
     all_results_dict = {i[0]: i for i in all_results}
-    results_done_dict = {i[0]: [i[0],i[1],i[3]] for i in results_done}
+    results_done_dict = {i[0]: [i[0], i[1], i[3]] for i in results_done}
     all_results_dict.update(results_done_dict)
-    to_save = [i[2] for i in sorted(all_results_dict.values(),key=lambda x:x[0]) if isinstance(i[2],np.ndarray)]
+    to_save = [i[2] for i in sorted(all_results_dict.values(), key=lambda x: x[0]) if isinstance(i[2], np.ndarray)]
     for i in to_save:
         images_to_save.append(Image.fromarray((i * 255).astype("uint8")))
     end_time = time.time()

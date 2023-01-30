@@ -133,13 +133,26 @@ def get_frame_seed_data(board_params, _num_frames) -> [()]:  # List[(seed,subsee
     return all_frames
 
 
-def get_prompt_words_and_weights_list_old(prompt) -> List[List[str]]:
+def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
     """
     >>> get_prompt_words_and_weights_list("hello:1 world:.2 how are (you:1.0)")
     [('hello', 1.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     >>> get_prompt_words_and_weights_list(f'test list:\\n\\thello:1 world:.2 how are (you:1.0)')
     [('test', 1.0), ('list', 1.0), ('hello', 1.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
+    >>> get_prompt_words_and_weights_list("")
+    []
+    >>> get_prompt_words_and_weights_list("hello")
+    [('hello', 1.0)]
+    >>> get_prompt_words_and_weights_list("hello:0.5")
+    [('hello', 0.5)]
+    >>> get_prompt_words_and_weights_list("hello:.5 world")
+    [('hello', 0.5), ('world', 1.0)]
+    >>> get_prompt_words_and_weights_list("hello:5 world:0.2")
+    [('hello', 5.0), ('world', 0.2)]
+    >>> get_prompt_words_and_weights_list("hello:5 (world:0.2) how (are) you")
+    [('hello', 5.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     """
+    if prompt=="": return []
     prompt = sanitize_prompt(prompt)
     words = prompt.split(" ")
     possible_word_weight_pairs = [i.split(":") for i in words]
@@ -167,19 +180,19 @@ def get_prompt_words_and_weights_list_old(prompt) -> List[List[str]]:
             w = 1.0
         out.append((word_weight_pair[0], w))
     return out
-def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
+def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
     """
-    >>> get_prompt_words_and_weights_list("")
+    >>> get_prompt_words_and_weights_list_new("")
     []
-    >>> get_prompt_words_and_weights_list("hello")
+    >>> get_prompt_words_and_weights_list_new("hello")
     [('hello', 1.0)]
-    >>> get_prompt_words_and_weights_list("hello:0.5")
+    >>> get_prompt_words_and_weights_list_new("hello:0.5")
     [('hello', 0.5)]
-    >>> get_prompt_words_and_weights_list("hello:.5 world")
+    >>> get_prompt_words_and_weights_list_new("hello:.5 world")
     [('hello', 0.5), ('world', 1.0)]
-    >>> get_prompt_words_and_weights_list("hello:5 world:0.2")
+    >>> get_prompt_words_and_weights_list_new("hello:5 world:0.2")
     [('hello', 5.0), ('world', 0.2)]
-    >>> get_prompt_words_and_weights_list("hello:5 (world:0.2) how (are) you")
+    >>> get_prompt_words_and_weights_list_new("hello:5 (world:0.2) how (are) you")
     [('hello', 5.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     """
     prompt = sanitize_prompt(prompt)
@@ -240,7 +253,7 @@ class StoryBoardPrompt:
     ...     SB._get_prompt_at_time(0.5)
     ... except Exception as e:
     ...     print(e)
-    'dog:1.0 cat:1.0'
+    '(dog:1.00000000)(cat:1.00000000)'
     """
 
     def __init__(self, prompts: List[str] or str, seconds_lengths: List[float], use_only_nouns=False):
@@ -418,19 +431,19 @@ class StoryBoardPrompt:
         ...     SB._get_prompt_at_time(0.0)
         ... except Exception as e:
         ...     raise e
-        '(dog:1.000000000000000)(cat:0.000000000000000)'
+        '(dog:1.00000000)(cat:0.00000000)'
         >>> try:
         ...     SB = StoryBoardPrompt("doctests",[0.5,0.5])
         ...     SB._get_prompt_at_time(0.5)
         ... except Exception as e:
         ...     raise e
-        '(dog:1.000000000000000)(cat:1.000000000000000)'
+        '(dog:1.00000000)(cat:1.00000000)'
         >>> try:
         ...     SB = StoryBoardPrompt("doctests",[0.5,0.5])
         ...     SB._get_prompt_at_time(0.75)
         ... except Exception as e:
         ...     raise e
-        '(dog:0.500000000000000)(cat:1.000000000000000)'
+        '(dog:0.50000000)(cat:1.00000000)'
 
         """
 
@@ -461,7 +474,7 @@ class StoryBoardPrompt:
                               section_percent)
                           ])
 
-        return "".join([f"({w[0]}:{w[1]:.5f})" for w in prmpt])
+        return "".join([f"({w[0]}:{w[1]:.8f})" for w in prmpt])
 
     def __getitem__(self, time_seconds: float) -> str:
         return self(time_seconds)
@@ -470,17 +483,84 @@ class StoryBoardPrompt:
         out = [sp for sp in p if sp[0] in self.noun_list]
         return out
 
+class StoryBoardSeed():
+
+    def __init__(self, seeds:[int], times:[int]):
+        self.seeds = seeds
+        self.times = times
+
+
+
+    def get_seed_at_time(self, seconds):
+        """
+        >>> times = [4,8,16]
+        >>> seeds = [1,2,3]
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(0.0)
+        (1, 2, 0.0)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(1.0)
+        (1, 2, 0.25)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(4.0)
+        (1, 2, 1.0)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(4.01)
+        (2, 3, 0.0024999999999999467)
+
+
+        """
+        times = self.times
+        times= [0]+times
+        seeds= self.seeds
+        import numpy as np
+        if seconds < times[0]:
+            raise ValueError("seconds cannot be less than the start time of the storyboard")
+        if seconds > times[-1]:
+            raise ValueError("seconds cannot be greater than the end time of the storyboard")
+        index = np.searchsorted(times, seconds)-1
+        index = max(index,0)
+        total_time_in_section = times[index] - times[index+1]
+        time_into_section = seconds - times[index]
+        percent_into_section = time_into_section / total_time_in_section
+        return seeds[index], seeds[index+1], abs(percent_into_section)
+    def get_seeds_at_times(self, seconds_list):
+        if isinstance(seconds_list, float) or isinstance(seconds_list, int):
+            seconds_list = [seconds_list]
+        return [self.get_seed_at_time(s) for s in seconds_list]
+    def get_prime_seeds_at_times(self, seconds_list):
+        if isinstance(seconds_list, float) or isinstance(seconds_list, int):
+            seconds_list = [seconds_list]
+        return [self.get_seed_at_time(s)[0] for s in seconds_list]
+    def get_subseeds_at_times(self, seconds_list):
+        if isinstance(seconds_list, float) or isinstance(seconds_list, int):
+            seconds_list = [seconds_list]
+        return [self.get_seed_at_time(s)[1] for s in seconds_list]
+    def get_subseed_strength_at_times(self, seconds_list):
+        if isinstance(seconds_list, float) or isinstance(seconds_list, int):
+            seconds_list = [seconds_list]
+        return [self.get_seed_at_time(s)[2] for s in seconds_list]
+
+class StoryBoardData:
+    def __init__(self, storyboard_prompt: StoryBoardPrompt, storyboard_seed: StoryBoardSeed):
+        self.storyboard_prompt = storyboard_prompt
+        self.storyboard_seed = storyboard_seed
+
+
 
 if __name__ == "__main__":
+    import modules.paths
     import doctest
-
+    print(StoryBoardPrompt(
+        [
+            "super:1 hero:1 cat:0.0",
+            "super:0 hero:1 cat:0.5",
+            "super:1 hero:1 cat:0.0"
+        ],
+        seconds_lengths=[1.0, 1.0])(0.5))
     assert StoryBoardPrompt(
         [
             "super:1 hero:1 cat:0.0",
             "super:0 hero:1 cat:0.5",
             "super:1 hero:1 cat:0.0"
         ],
-        seconds_lengths=[1.0, 1.0])(0.5) == "super:0.5 hero:1.0 cat:0.25"
+        seconds_lengths=[1.0, 1.0])(0.5)[0] == '(super:0.50000000)(hero:1.00000000)(cat:0.25000000)'
 
     test1 = StoryBoardPrompt("doctests", [0.5, 0.5])
     doctest.testmod()
@@ -497,3 +577,4 @@ if __name__ == "__main__":
     movie_seconds_per_frame = 1 / movies_fps
     movie_frames = [SBP(i * movie_seconds_per_frame) for i in range(movie_length_in_frames)]
     print(movie_frames, len(movie_frames))
+
