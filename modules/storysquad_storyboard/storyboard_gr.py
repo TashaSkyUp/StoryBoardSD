@@ -210,7 +210,36 @@ class StoryBoardGradio:
             self.StSqUI = wrapped_ui
             self.get_story_squad_ui = lambda: self.StSqUI
             self.setup_story_board_events()
+    def drag_image_in(self,idx,img,all_state):
+        print(img.info)
+        p = img.info["parameters"]
+        ps = p.split(",")
+        prompt = ps[0]
+        steps_pos =ps[0].find("Steps")
+        prompt = prompt[:steps_pos]
+        steps = int(ps[0][steps_pos+6:])
+        ps.remove(ps[0])
+        params={}
+        for i in ps:
+            k,v = i.split(":")
+            params[k.strip()]=v
 
+        sbih = SBIHyperParams()
+        sbih.prompt = prompt
+        sbih.steps = int(steps)
+        sbih.seed = int(params["Seed"])
+        sbih.subseed = int(params["Variation seed"])
+        subss = eval(params["Variation seed strength"])[0]
+        sbih.subseed_strength = float(subss)
+        sbih.cfg_scale = int(params["CFG scale"])
+
+        if idx < len(all_state["story_board"]):
+            # this may be incorrect
+            all_state["story_board"][idx] = sbih
+        else:
+            all_state["story_board"].append(sbih)
+
+        return all_state,img
 
     def reset_story_board(self, state,*sb_imgs):
         import gradio as gr
@@ -391,6 +420,7 @@ class StoryBoardGradio:
         return [all_state,complete_mp4_f_path]
 
     def update_image_exp_text(self, h_params:List[SBIHyperParams]):
+        # TODO: this needs redone, currently its behavour is not consistent or defined purposfully
         print("update_image_exp_text")
         print(h_params)
         o = [str(i) for i in h_params]
@@ -587,6 +617,7 @@ class StoryBoardGradio:
         sb_msp = self.get_sb_multi_sample_params_from_ui(ui_param_state)
 
         images_out, params = get_random_params_and_images(sb_msp)
+        params:[SBIHyperParams] = params
         text_out = self.update_image_exp_text(params)
         all_state["im_explorer_hparams"] = params
         return all_state, *images_out, *text_out, *[None] * 3
@@ -756,9 +787,15 @@ class StoryBoardGradio:
                     with gr.Column():
                         make_gr_label("StoryBoard")
                         with gr.Row(label="StoryBoard", scale=1):
-                            image1 = gr.Image(label="position 1", interactive=False)
-                            image2 = gr.Image(label="position 2", interactive=False)
-                            image3 = gr.Image(label="position 3", interactive=False)
+                            image1 = gr.Image(label="position 1", interactive=True,type="pil")
+                            image2 = gr.Image(label="position 2", interactive=True,type="pil")
+                            image3 = gr.Image(label="position 3", interactive=True,type="pil")
+                            for i,img in enumerate([image1, image2, image3]):
+                                img.change(self.drag_image_in,
+                                           inputs=[gr.State(i),img,self.all_state],
+                                           outputs=[self.all_state, img]
+                                           )
+
                             self.all_components["story_board_images"] = [image1, image2, image3]
 
 
@@ -1068,7 +1105,6 @@ class StoryBoardGradio:
             #with gr.Group(equal_width=True):
             but = gr.Button(f"Up vote")
             gr_comps["im_explorer"]["buttons"].append(but)
-
             but = gr.Button(f"Use in storyboard")
             gr_comps["im_explorer"]["buttons"].append(but)
 
