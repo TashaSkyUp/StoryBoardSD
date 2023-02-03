@@ -11,7 +11,7 @@ from PIL import Image
 
 from modules.storysquad_storyboard.env import *
 from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_words_and_weights_list, \
-    get_frame_seed_data, StoryBoardPrompt
+    get_frame_seed_data, StoryBoardPrompt, StoryBoardData, StoryBoardSeed
 
 # from .storyboard_gr import StoryBoardGradio
 
@@ -674,7 +674,6 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
     end_time = time.time()
     print(f"Time taken: {end_time - start_time}")
 
-
     return images_to_save
 
 
@@ -904,7 +903,9 @@ def get_frame_deltas(frames: List[Image.Image]) -> List[float]:
 
 def get_linear_interpolation(param: PIL.Image, param1: PIL.Image, t: float):
     """linear interpolation between two images"""
-    return Image.blend(param, param1, t)
+    r_img = Image.blend(param, param1, t)
+    r_img.info = {"frame_type": "i"}
+    return r_img
 
 
 def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render_func, test=False,
@@ -938,52 +939,84 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
             "dog:0.5 cat:0.5",
             "dog:0.0 cat:1.0",
         ]
-        vo_len_secs = 10
+        vo_len_secs = 60
         my_ren_p.num_frames_per_section = int((my_ren_p.fps * vo_len_secs) / my_ren_p.sections)
         my_ren_p.num_frames = my_ren_p.num_frames_per_section * my_ren_p.sections
         my_ren_p.seconds = vo_len_secs
+        sb_seeds_list = [1, 2, 3]
 
     else:
         sb_prompts = [i.prompt for i in storyboard_params]
+        sb_seeds_list = [i.seed for i in storyboard_params]
 
     sb_prompt = StoryBoardPrompt(sb_prompts, my_ren_p.seconds, False)
+    sb_seeds = StoryBoardSeed(sb_seeds_list,
+                              [my_ren_p.seconds * .5,
+                               my_ren_p.seconds]
+                              )
+    sb_data = StoryBoardData(
+        storyboard_seed=sb_seeds,
+        storyboard_prompt=sb_prompt
+    )
 
     # TODO: need to find seeds/subseeds/weights for each prompt
 
-    ez_p_func: Callable[[Any], SBIHyperParams] = lambda ti: SBIHyperParams(prompt=sb_prompt[ti],
-                                                                           negative_prompt=ui_params[1],
-                                                                           steps=ui_params[2],
-                                                                           seed=[1] * len(sb_prompt[ti]),
-                                                                           subseed=[-1] * len(sb_prompt[ti]),
-                                                                           subseed_strength=[0] * len(sb_prompt[ti]),
-                                                                           cfg_scale=ui_params[13])
+    ez_p_func: Callable[[Any], SBIHyperParams] = lambda ti: \
+        SBIHyperParams(prompt=sb_prompt[ti],
+                       negative_prompt=ui_params[1],
+                       steps=ui_params[2],
+                       seed=sb_seeds.get_prime_seeds_at_times(ti),
+                       subseed=sb_seeds.get_subseeds_at_times(ti),
+                       subseed_strength=sb_seeds.get_subseed_strength_at_times(ti),
+                       cfg_scale=ui_params[13]
+                       )
 
     ez_r_func: Callable[[Any], Any] = lambda x: render_func(SBMultiSampleArgs(hyper=ez_p_func(x), render=my_ren_p))
 
-    imgs_by_seconds = {
+    all_imgs_by_seconds = {
         np.float64(0): ez_r_func(0.0).all_images[-1],
         np.float64(my_ren_p.seconds): ez_r_func(my_ren_p.seconds).all_images[-1],
     }
+    all_imgs_by_seconds[0.0].info = {"frame_type": "g"}
+    all_imgs_by_seconds[my_ren_p.seconds].info = {"frame_type": "g"}
 
-    imgs_pairs_by_diff = {
-        get_img_diff(imgs_by_seconds[0], imgs_by_seconds[my_ren_p.seconds]): (
-            list(imgs_by_seconds.keys())[0], list(imgs_by_seconds.keys())[1])
-    }
+    # imgs_pairs_by_diff = {
+    #    get_img_diff(imgs_by_seconds[0], imgs_by_seconds[my_ren_p.seconds]): (
+    #        list(imgs_by_seconds.keys())[0], list(imgs_by_seconds.keys())[1])
+    # }
 
     done_pairs = []
     while True:
-        imgs_by_seconds = dict(sorted(imgs_by_seconds.items()))
-        imgs_by_seconds_keys_list = list(imgs_by_seconds.keys())
+        all_imgs_by_seconds = dict(sorted(all_imgs_by_seconds.items()))
+        non_interp_imgs_by_seconds = \
+            {k: v for k, v in all_imgs_by_seconds.items() if
+             "frame_type" not in v.info or v.info["frame_type"] != "i"}
+
+        imgs_by_seconds_keys_list = list(all_imgs_by_seconds.keys())
         # find the largest difference in means between two records
-        frame_deltas = get_frame_deltas(list(imgs_by_seconds.values()))
+        frame_deltas = get_frame_deltas(list(all_imgs_by_seconds.values()))
 
         canidate_imgs_pairs_by_diff = []  # [delta, seconds_idx_1, seconds_idx_2]
-        for i in range(len(frame_deltas)):
-            time_pair = (imgs_by_seconds_keys_list[i], imgs_by_seconds_keys_list[i + 1])
+        for delta_idx in range(len(frame_deltas)):
+            time_pair = (imgs_by_seconds_keys_list[delta_idx], imgs_by_seconds_keys_list[delta_idx + 1])
+            time_pair_img_infos = [all_imgs_by_seconds[time_pair[0]].info,
+                                   all_imgs_by_seconds[time_pair[1]].info]
+
             if time_pair not in done_pairs:
                 canidate_imgs_pairs_by_diff.append(
-                    (frame_deltas[i], (imgs_by_seconds_keys_list[i], imgs_by_seconds_keys_list[i + 1])))
-
+                    (frame_deltas[delta_idx],
+                     (imgs_by_seconds_keys_list[delta_idx],
+                      imgs_by_seconds_keys_list[delta_idx + 1])
+                     )
+                )
+        # update the list to be scores based on the delta and if the frame is an i type
+        new = []
+        for k, v in canidate_imgs_pairs_by_diff:
+            if "i" in all_imgs_by_seconds[v[0]].info["frame_type"]:
+                new.append((k * 0, v))
+            else:
+                new.append((k, v))
+        canidate_imgs_pairs_by_diff = new
         # sort so that the largest difference is first
         imgs_pairs_by_diff_sorted = sorted(canidate_imgs_pairs_by_diff, key=lambda x: x[0], reverse=True)
 
@@ -993,11 +1026,11 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
         # if we have rendered enough images, then stop
 
         if maxdiff < 2.0:
-            if len(imgs_by_seconds) >= int(my_ren_p.num_frames * .8):
+            if len(all_imgs_by_seconds) >= int(my_ren_p.num_frames * .8):
                 print(f'done because of low maxdiff')
                 break
 
-        if len(imgs_by_seconds) >= int(my_ren_p.num_frames * 1.2):
+        if len(all_imgs_by_seconds) >= int(my_ren_p.num_frames * 1.2):
             print(f'done because of too many frames")')
             break
 
@@ -1019,23 +1052,23 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
 
         tt_imgs = zip(target_times, pairs_done_this_iter, imgs)
         # only keep the images that decrease the difference
-        for t, p, i in tt_imgs:
-            imga = imgs_by_seconds[p[0]]
-            imgb = imgs_by_seconds[p[1]]
-            time_of_segment = p[1] - p[0]
+        for t_of_f, src_pair, g_img in tt_imgs:
+            imga = all_imgs_by_seconds[src_pair[0]]
+            imgb = all_imgs_by_seconds[src_pair[1]]
+            time_of_segment = src_pair[1] - src_pair[0]
             segmnt_per_of_time = time_of_segment / sb_prompt.total_seconds
 
-            diff_a = get_img_diff(imga, i)
-            diff_b = get_img_diff(i, imgb)
+            diff_a = get_img_diff(imga, g_img)
+            diff_b = get_img_diff(g_img, imgb)
             # mean_ab = (diff_a + diff_b) / 2 # judging on this creates an no escape issue when one dif is 0
             # this is the difference between the two images
             # TODO: this maybe can be safely retrieved from frame_deltas
             diff_orig = get_img_diff(imga, imgb)
 
-            if len(imgs_by_seconds) < int(my_ren_p.num_frames * .1):
+            if len(all_imgs_by_seconds) < int(my_ren_p.num_frames * .1):
                 frame_type = "keyframe"
             elif diff_a == 0 or diff_b == 0:
-                print(f'frame {t} from pair {p} must be i frame because a diff is 0')
+                print(f'frame {t_of_f} from pair {src_pair} must be i frame because a diff is 0')
                 frame_type = "i"
             elif time_of_segment < (1 / my_ren_p.fps):  # if the segment is less than a frame
                 frame_type = "i"
@@ -1043,21 +1076,32 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
                 frame_type = "g"
 
             if frame_type == "keyframe" or frame_type == "g":
-                print(f'adding -{frame_type}- frame @ time: {t} for pair: {p}')
-                imgs_by_seconds[t] = i
+                print(f'adding -{frame_type}- frame @ time: {t_of_f} for pair: {src_pair}')
+                g_img.info["frame_type"] = "g"
+                all_imgs_by_seconds[t_of_f] = g_img
             elif frame_type == "i":
                 # report what we did not add
                 # print( f'not adding time: {t} for pair: {p}')
                 # add a linear interpolation between the two images
-                print(f'adding -{frame_type}- (interpolation) frame between {p[0]} and {p[1]}')
-                imgs_by_seconds[t] = get_linear_interpolation(imgs_by_seconds[p[0]], imgs_by_seconds[p[1]], .5)
+                # print(f'adding -{frame_type}- (interpolation) frame between {src_pair[0]} and {src_pair[1]}')
+                i_frames_needed = round(diff_orig / 3) + 1
+                print(
+                    f'adding {i_frames_needed} -{frame_type}- (interpolation) frames between {src_pair[0]} and {src_pair[1]}')
+                imga.info["frame_type"] += "i"
+                imgb.info["frame_type"] = "i" + imgb.info["frame_type"]
 
-    for k, v in imgs_by_seconds.items():
+                for p in np.arange(0, 1, 1 / i_frames_needed):
+                    k = p * time_of_segment + src_pair[0]
+                    v = get_linear_interpolation(imga, imgb, p)
+                    v.info["frame_type"] = "i"
+                    all_imgs_by_seconds[k] = v
+
+    for k, v in all_imgs_by_seconds.items():
         print(k)
-    print(f'total of {len(imgs_by_seconds)} frames')
+    print(f'total of {len(all_imgs_by_seconds)} frames')
 
-    images_to_save = [i for i in imgs_by_seconds.values()]
-    for k, v in imgs_by_seconds.items():
+    images_to_save = [i for i in all_imgs_by_seconds.values()]
+    for k, v in all_imgs_by_seconds.items():
         v.save(f'tmp_{k}.png')
 
     target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save)
@@ -1072,8 +1116,7 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
 
     # the audio is rendered first, attempting to reach some target length.
     # the video is rendered second, to match the length of the resultant audio
-    from modules.shared import opts,Options
-
+    from modules.shared import opts, Options
 
     mytext = ui_params[0]
     if test or test_render:
