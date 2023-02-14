@@ -201,33 +201,84 @@ def robot_voice_effect(aud_out, iterations=4):
     return effected, rate
 
 
+def rfind_list(text, to_find: list):
+    """
+    returns the index of the last item in to_find that is found in text plus its length,
+     or the length of the test if none are found, also resorts to finding " " or "," if none are found
+
+
+    >>> test = "one two three four five six seven eight nine ten "
+    >>>
+    >>> print(f"max_idx {len(test)-1} found at:{rfind_list(test, ['one', 'e','z'])}")
+    max_idx 48 found at:47
+    >>> print(f"max_idx {len(test)-1} found at:{rfind_list(test, ['one', 'two','agafd'])}")
+    max_idx 48 found at:7
+    >>> print(f"max_idx {len(test)-1} found at:{rfind_list(test, ['one', 'agafd'])}")
+    max_idx 48 found at:3
+    >>> print(f"max_idx {len(test)-1} found at:{rfind_list(test, ['apple', 'sauce'])}")
+    max_idx 48 found at:-1
+    """
+    idx = -1
+    finds = [text.rfind(i) + len(i) for i in to_find if text.rfind(i) != -1]
+    finds.sort()
+    if len(finds) == 0:
+        low_priority = [' ', ',']
+        finds = [text.rfind(i) + len(i) for i in low_priority if text.rfind(i) != -1]
+        finds.sort()
+        if len(finds) == 0:
+            return len(text)
+        else:
+            return finds[-1]
+
+    return finds[-1]
+
+
 def get_samples_from_gtts(text_to_read, slow=False) -> (numpy.ndarray, float):
+    """
+    >>> get_samples_from_gtts(long_story_test)
+    """
     # TODO: this needs paraellization see https://gtts.readthedocs.io/en/latest/tokenizer.html#minimizing
     # 100 characters per request
+    punctuations = '''!()[]{};:\<>./?@#$%^&*_~\n'''
+    punc = list(punctuations)
+    punc.append("   ")
+
+    # slice up the text_to_read into 100 character chunks or smaller than shrink them to the nearest punctuation
+    cur_idx = 0
+    sections = []
+    while cur_idx < len(text_to_read):
+        last_punc = rfind_list(text_to_read[cur_idx:cur_idx + 100], punc)
+        section = text_to_read[cur_idx:cur_idx + last_punc]
+        sections.append(section)
+        cur_idx += last_punc
 
     from gtts import gTTS
     from pedalboard.io import AudioFile
     import moviepy.editor as mpy
     import os
 
-    audio = gTTS(
-        text=text_to_read,
-        lang="en",
-        slow=slow,
-    )
-    audio.save("tmp.mp3")
+    aud_length_secs = 0
+    out = []
+    for section in sections:
+        audio = gTTS(
+            text=section,
+            lang="en",
+            slow=slow,
+        )
+        audio.save("tmp.mp3")
 
-    mpy.AudioFileClip("tmp.mp3").write_audiofile("tmp.wav")
-    with AudioFile("tmp.wav", "r") as f:
-        aud_out = f.read(f.frames)
-    # get the length of the audio
-    aud_length_secs = aud_out.shape[1] / GTTS_SAMPLE_RATE
+        mpy.AudioFileClip("tmp.mp3").write_audiofile("tmp.wav")
+        with AudioFile("tmp.wav", "r") as f:
+            aud_out = f.read(f.frames)
+        # get the length of the audio
+        aud_length_secs += (aud_out.shape[1] / GTTS_SAMPLE_RATE)
 
-    # delete the files
-    os.remove("tmp.mp3")
-    os.remove("tmp.wav")
+        # delete the files
+        os.remove("tmp.mp3")
+        os.remove("tmp.wav")
+        out.append(aud_out)
 
-    return aud_out, aud_length_secs
+    return np.concatenate(out, axis=1), aud_length_secs
 
 
 def make_mp4(input_path, filepath, filename, width, height, keep, fps=30) -> str:
