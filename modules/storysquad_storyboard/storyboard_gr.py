@@ -169,6 +169,7 @@ def get_test_storyboard():
     return storyboard_params
 
 
+
 class StoryBoardGradio:
     def __init__(self):
         import gradio as gr
@@ -210,43 +211,80 @@ class StoryBoardGradio:
             self.StSqUI = wrapped_ui
             self.get_story_squad_ui = lambda: self.StSqUI
             self.setup_story_board_events()
-    def drag_image_in(self,idx,img,all_state):
-        print(img.info)
-        p = img.info["parameters"]
-        ps = p.split(",")
-        prompt = ps[0]
-        steps_pos =ps[0].find("Steps")
-        prompt = prompt[:steps_pos]
-        steps = int(ps[0][steps_pos+6:])
-        ps.remove(ps[0])
-        params={}
-        for i in ps:
-            k,v = i.split(":")
-            params[k.strip()]=v
-
-        sbih = SBIHyperParams()
-        sbih.prompt = prompt
-        sbih.steps = int(steps)
-        sbih.seed = int(params["Seed"])
-        sbih.subseed = int(params["Variation seed"])
-        subss = eval(params["Variation seed strength"])[0]
-        sbih.subseed_strength = float(subss)
-        sbih.cfg_scale = int(params["CFG scale"])
-
-        if idx < len(all_state["story_board"]):
-            # this may be incorrect
-            all_state["story_board"][idx] = sbih
-        else:
-            all_state["story_board"].append(sbih)
-
-        return all_state,img
-
-    def reset_story_board(self, state,*sb_imgs):
+    def drag_image_in(self, idx, img, all_state, prompt,negative_prompt):
         import gradio as gr
+        new_prompt = None
+        if img and "parameters" in img.info.keys():
+            print(img.info)
+            params = img.info["parameters"]
+            params_split= params.splitlines()
+            new_prompt = params_split[0]
+
+            if len(params_split) == 3:
+                negative_prompt = params_split[1].split(":")[1]
+            else:
+                negative_prompt = negative_prompt
+
+            part3=params_split[-1]
+            bracket_idx = part3.find("\"[")
+            if bracket_idx > 0:
+                brkt2 = part3.find("]\"")
+                brktd = part3[bracket_idx:brkt2+2]
+                part3 = part3.replace(brktd, "[0]")
+            ps = part3.split(",")
+            params={}
+            for i in ps:
+                k, v = i.split(":")
+                params[k.strip()] = v
+            sbih = SBIHyperParams()
+            sbih.prompt = new_prompt
+            sbih.negative_prompt = negative_prompt
+            sbih.steps = int(params["Steps"])
+            sbih.seed = int(params["Seed"])
+            if "Variation seed" in params.keys():
+                sbih.subseed = int(params["Variation seed"])
+                subss = eval(params["Variation seed strength"])[0]
+                sbih.subseed_strength = float(subss)
+            else:
+                sbih.subseed = -1
+                sbih.subseed_strength = 0.0
+
+            sbih.cfg_scale = int(params["CFG scale"])
+
+            if idx < len(all_state["story_board"]):
+                # this may be incorrect
+                all_state["story_board"][idx] = sbih
+            else:
+                all_state["story_board"].append(sbih)
+
+        if prompt==new_prompt or new_prompt is None:
+            out_prompt =gr.Textbox.update()
+        else:
+            #out_prompt = " ".join([i.split(":")[0][1:] for i in new_prompt.split(" ")])
+            from modules.storysquad_storyboard.storyboard import get_prompt_words_list
+            out_prompt = get_prompt_words_list(new_prompt)
+            out_prompt =" ".join(out_prompt)
+        return all_state,img,out_prompt,negative_prompt
+
+    def reset_story_board(self, state):
+        import gradio as gr
+        from modules.storysquad_storyboard.storyboard import get_prompt_words_list
         # TODO: make sure this resets the render button and the generate button and the image explorerer area
-        state["story_board"] = []
-        state["history"] = []
-        state["im_explorer_hparams"] = []
+        all_state = state[self.all_state]
+
+        if len(all_state["story_board"]) > 0:
+            new_prompt = state[self.comp_helper.prompt]
+            old_prompt = all_state["story_board"][0].prompt
+
+            old_prompt = get_prompt_words_list(old_prompt)
+            old_prompt =" ".join(old_prompt)
+
+            if new_prompt==old_prompt:
+                return {self.all_state: all_state}
+
+        all_state["story_board"] = []
+        all_state["history"] = []
+        all_state["im_explorer_hparams"] = []
         sb_imgs = []
 
         sb_img_dict = {k:random_noise_image() for k
@@ -257,7 +295,7 @@ class StoryBoardGradio:
 
         if sb_env.STORYBOARD_PRODUCT=="clash":
             return {
-                self.all_state:state,
+                self.all_state:all_state,
                 **sb_img_dict,
                 **sb_txt_dict,
                 self.comp_helper.robot_dreams:gr.Column.update(visible=True),
@@ -266,7 +304,7 @@ class StoryBoardGradio:
             }
         elif sb_env.STORYBOARD_PRODUCT=="market":
             return {
-                self.all_state:state,
+                self.all_state:all_state,
                 **sb_img_dict,
                 **sb_txt_dict,
                 self.comp_helper.robot_dreams:gr.Column.update(visible=True),
@@ -275,7 +313,7 @@ class StoryBoardGradio:
             }
         if sb_env.STORYBOARD_PRODUCT=="expert":
             return {
-                self.all_state:state,
+                self.all_state:all_state,
                 **sb_img_dict,
                 **sb_txt_dict,
                 self.comp_helper.robot_dreams:gr.Column.update(visible=True),
@@ -736,6 +774,7 @@ class StoryBoardGradio:
                                                                                placeholder="Prompt"
                                                                                )
 
+                    self.comp_helper.prompt = self.all_components["param_inputs"]["prompt"]
                     self.all_components["param_inputs"]["negative_prompt"] = gr.Textbox(
                         label="Negative prompt",
                         elem_id=f"{id_part}_neg_prompt",
@@ -743,6 +782,9 @@ class StoryBoardGradio:
                         lines=1,
                         placeholder="Negative prompt"
                     )
+                    self.comp_helper.negative_prompt =\
+                        self.all_components["param_inputs"]["negative_prompt"]
+
                     if sb_env.STORYBOARD_PRODUCT =="clash":
                         self.all_components["param_inputs"]["negative_prompt"].visible = False
                     param_area.render()
@@ -792,8 +834,18 @@ class StoryBoardGradio:
                             image3 = gr.Image(label="position 3", interactive=True,type="pil")
                             for i,img in enumerate([image1, image2, image3]):
                                 img.change(self.drag_image_in,
-                                           inputs=[gr.State(i),img,self.all_state],
-                                           outputs=[self.all_state, img]
+                                           inputs=[
+                                               gr.State(i),
+                                               img,
+                                               self.all_state,
+                                               self.comp_helper.prompt,
+                                               self.comp_helper.negative_prompt
+                                           ],
+                                           outputs=[self.all_state,
+                                                    img,
+                                                    self.comp_helper.prompt,
+                                                    self.comp_helper.negative_prompt
+                                                    ]
                                            )
 
                             self.all_components["story_board_images"] = [image1, image2, image3]
@@ -990,7 +1042,8 @@ class StoryBoardGradio:
                          inputs ={
                              self.all_state,
                              *self.all_components["story_board_images"],
-                             *self.all_components["im_explorer"]["images"]
+                             *self.all_components["im_explorer"]["images"],
+                             self.comp_helper.prompt
                          },
                          outputs={
                              self.all_state,
