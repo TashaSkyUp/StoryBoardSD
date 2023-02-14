@@ -180,6 +180,11 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
             w = 1.0
         out.append((word_weight_pair[0], w))
     return out
+
+def get_prompt_words_list(prompt):
+    out = [i[0] for i in get_prompt_words_and_weights_list(prompt)]
+    return out
+
 def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
     """
     >>> get_prompt_words_and_weights_list_new("")
@@ -521,6 +526,17 @@ class StoryBoardSeed():
         percent_into_section = time_into_section / total_time_in_section
         return seeds[index], seeds[index+1], abs(percent_into_section)
     def get_seeds_at_times(self, seconds_list):
+        """
+        >>> times = [4,8,16]
+        >>> seeds = [1,2,3]
+        >>> sbseeds = StoryBoardSeed(seeds,times)
+        >>> sbseeds.get_seeds_at_times([0.0,1.0,4.0,4.01])
+        [(1, 2, 0.0), (1, 2, 0.25), (1, 2, 1.0), (2, 3, 0.0024999999999999467)]
+        >>> sbseeds.get_prime_seeds_at_times([0.0,1.0,4.0,4.01])
+        [1, 1, 1, 2]
+        >>> sbseeds.get_prime_seeds_at_times(0)
+        [1]
+        """
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s) for s in seconds_list]
