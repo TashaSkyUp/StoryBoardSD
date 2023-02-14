@@ -329,6 +329,7 @@ def make_mp4(input_path, filepath, filename, width, height, keep, fps=30) -> str
 def make_mp4_from_images(image_list, filepath, filename, width, height, keep, fps=30,
                          filter_func=False) -> str:
     import os
+    import gc
     import glob
     from PIL import Image
     """Make an mp4 from a list of images, using make_mp4"""
@@ -336,7 +337,12 @@ def make_mp4_from_images(image_list, filepath, filename, width, height, keep, fp
     if filter_func:
         image_list = filter_func(image_list)
         # convert numpy array to PIL image
-        image_list = [Image.fromarray((image * 255).astype("uint8")) for image in image_list]
+        gc.collect()
+        u_8_image_list = [np.multiply(image, 255).astype("uint8") for image in image_list]
+        del image_list
+        gc.collect()
+        image_list = []
+        image_list = [Image.fromarray(image) for image in u_8_image_list]
 
     # save the images to a temp folder
     temp_folder_path = os.path.join(filepath, "temp")
@@ -487,7 +493,7 @@ def limit_per_pixel_change_slice(frames, max_change):
     from PIL import Image
     # change the frames to a numpy array if they are not and normalize the values to be between 0 and 1
     if isinstance(frames[0], Image.Image):
-        frames = [np.array(f) / 255 for f in frames]
+        frames = [np.array(f, dtype="float16") / 255 for f in frames]
 
     for i in range(1, len(frames)):
         # get the difference between the current frame and the last frame
@@ -979,6 +985,7 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render
     else:
         voice_over_text = ui_params[0]
 
+    # create the voice over
     audio_f_path, vo_len_secs = create_voice_over_for_storyboard(voice_over_text, 1, DefaultRender.seconds)
     # recalculate the storyboard params
     my_ren_p.num_frames_per_section = int((my_ren_p.fps * vo_len_secs) / my_ren_p.sections)
