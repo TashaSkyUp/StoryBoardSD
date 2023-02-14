@@ -127,7 +127,7 @@ def create_voice_over_for_storyboard(text_to_read, speech_speed, vo_length_sec):
     ...  import os
     ...  # print the current directory
     ...  print(os.getcwd())
-    ...  create_voice_over_for_storyboard("one two three four five six seven eight nine ten ", None, 10)
+    ...  create_voice_over_for_storyboard(long_story_test, None, 10)
     ...  break
     """
     # time everything
