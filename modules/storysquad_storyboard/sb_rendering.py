@@ -309,7 +309,7 @@ def make_mp4(input_path, filepath, filename, width, height, keep, fps=30) -> str
         '-c:v', 'libx264',
         '-vf', 'scale=' + str(width) + ':' + str(height),
         '-pix_fmt', 'yuv420p',
-        '-crf', '17',
+        '-crf', '11',
         '-preset', 'veryfast',
         str(mp4_path)
     ]
