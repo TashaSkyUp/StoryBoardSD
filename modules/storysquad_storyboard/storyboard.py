@@ -86,7 +86,7 @@ class SBIHyperParams:
         if isinstance(other, SBIHyperParams):
             return SBIHyperParams(
                 prompt=self._prompt + other._prompt,
-                negative_prompt=self.negative_prompt + other.negative_prompt,
+                negative_prompt=self._make_list(self.negative_prompt) + self._make_list(other.negative_prompt),
                 steps=self.steps + other.steps,
                 seed=self.seed + other.seed,
                 subseed=self.subseed + other.subseed,
@@ -152,7 +152,7 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
     >>> get_prompt_words_and_weights_list("hello:5 (world:0.2) how (are) you")
     [('hello', 5.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     """
-    if prompt=="": return []
+    if prompt == "": raise ValueError("prompt cannot be empty")
     prompt = sanitize_prompt(prompt)
     words = prompt.split(" ")
     possible_word_weight_pairs = [i.split(":") for i in words]
