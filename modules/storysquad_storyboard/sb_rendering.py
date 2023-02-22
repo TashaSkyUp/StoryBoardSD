@@ -345,7 +345,7 @@ def make_mp4_from_images(image_list, filepath, filename, width, height, keep, fp
         image_list = [Image.fromarray(image) for image in u_8_image_list]
 
     # save the images to a temp folder
-    temp_folder_path = os.path.join(filepath, "temp")
+    temp_folder_path = os.path.join(filepath, "frames")
     # remove all files in the input path
     for file in glob.glob(os.path.join(temp_folder_path, "*")):
         os.remove(file)
@@ -1235,7 +1235,7 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
 
 
 def compose_file_handling(audio_f_path, images_to_save):
-    working_dir = os.path.join(os.getenv("STORYBOARD_RENDER_PATH"), "tmp")
+    working_dir = os.path.join(STORYBOARD_RENDER_PATH, "tmp")
     print(f'working_dir: {working_dir}')
     print(f'audio_f_path: {audio_f_path}')
     video_f_path = make_mp4_from_images(
@@ -1246,7 +1246,7 @@ def compose_file_handling(audio_f_path, images_to_save):
         filter_func=lambda x: limit_per_pixel_change_slice(x, .5))
     print(f'video_f_path: {video_f_path}')
     complete_mp4_f_path = join_video_audio(video_f_path, audio_f_path)
-    target_mp4_f_path = os.path.join(os.getenv("STORYBOARD_RENDER_PATH"),
+    target_mp4_f_path = os.path.join(STORYBOARD_RENDER_PATH,
                                      f"StoryBoard-{str(random.randint(1, 1000000))}.mp4")
     print(f"target_mp4_f_path: {target_mp4_f_path}")
     # delete storyboard.mp4
