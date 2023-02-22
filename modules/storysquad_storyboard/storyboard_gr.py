@@ -221,7 +221,7 @@ class StoryBoardGradio:
             new_prompt = params_split[0]
 
             if len(params_split) == 3:
-                negative_prompt = params_split[1].split(":")[1]
+                negative_prompt = params_split[1].split("Negative prompt:")[1]
             else:
                 negative_prompt = negative_prompt
 
@@ -605,6 +605,8 @@ class StoryBoardGradio:
             out_sb_image_hyper_params = []
 
             def random_pompt_word_weights(prompt_to_randomize: str):
+                if run_test:
+                    print(f'prompt_to_randomize: {prompt_to_randomize}')
                 if ONLY_USE_NOUNS:
                     from  modules.storysquad_storyboard.storyboard import _get_noun_list
                     noun_list = _get_noun_list()
@@ -614,9 +616,6 @@ class StoryBoardGradio:
                     prompt_to_randomize = prompt_to_randomize[0]
                 elif isinstance(prompt_to_randomize, list) and len(prompt_to_randomize) == 0:
                     prompt_to_randomize = ""
-
-                if prompt_to_randomize == "" or prompt_to_randomize is None:
-                    prompt_to_randomize = "this is a test prompt that jumped over a lazy dog and then ran away"
 
                 prompt_to_randomize = prompt_to_randomize.split(" ")
 
@@ -631,11 +630,19 @@ class StoryBoardGradio:
 
                 return prompt_to_randomize
 
+            run_test = False
             out_call_args: SBMultiSampleArgs = SBMultiSampleArgs(render=base_params._render, hyper=[])
+
+            if base_params.hyper[0].prompt is None or base_params.hyper[0].prompt == "" or base_params.hyper[0].prompt == []:
+                run_test = True
+                print("running test")
+                base_params._hyper[0].prompt = "this is a test prompt that jumped over a lazy dog and then ran away"
+                base_params._hyper[0].negative_prompt = "(mutant :1.2) (confusing :1.2) blurry strange odd two heads (amature:1.2) person (meme:1.2)"
 
             for i in range(MAX_IEXP_SIZE):
                 tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
                 tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
+
                 tmp.prompt = [tmp_prompt]
                 tmp.seed = [modules.processing.get_fixed_seed(-1)]
 
