@@ -1,12 +1,32 @@
 import os
+from imageio_ffmpeg import get_ffmpeg_exe
+
+
+def get_this_files_path():
+    return os.path.dirname(os.path.realpath(__file__))
+
 
 STORYBOARD_DEV_MODE = os.getenv("STORYBOARD_DEV_MODE") == "True"
-STORYBOARD_RENDER_PATH = os.getenv("STORYBOARD_RENDER_PATH","~")
+STORYBOARD_RENDER_PATH = os.getenv("STORYBOARD_RENDER_PATH", get_this_files_path())
 if STORYBOARD_RENDER_PATH:
     STORYBOARD_TMP_PATH = os.path.join(STORYBOARD_RENDER_PATH, "tmp")
-STORYBOARD_FFMPEG_PATH = os.getenv("STORYBOARD_FFMPEG_PATH")
+
+STORYBOARD_FFMPEG_PATH = os.getenv("STORYBOARD_FFMPEG_PATH", "ERROR")
+if STORYBOARD_FFMPEG_PATH == "ERROR":
+    try:
+        fallback =get_ffmpeg_exe()
+        print(f'fallback: {fallback}')
+        STORYBOARD_FFMPEG_PATH = fallback
+    except:
+        raise Exception("STORYBOARD_FFMPEG_PATH is not set\n fallback failed.")
+
 STORYBOARD_PRODUCT = os.getenv("STORYBOARD_PRODUCT", "expert")
 
+# create any paths that do not exist yet
+if not os.path.exists(STORYBOARD_RENDER_PATH):
+    os.makedirs(STORYBOARD_RENDER_PATH)
+if not os.path.exists(STORYBOARD_TMP_PATH):
+    os.makedirs(STORYBOARD_TMP_PATH)
 
 
 def assure_os_perfect_path(os_path: str, override_os=None) -> str:
