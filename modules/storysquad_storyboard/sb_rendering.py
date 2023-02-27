@@ -1,17 +1,15 @@
 import copy
-import os
 import random
 from dataclasses import dataclass
-from typing import List, Callable, Any
+from typing import List
 
 import PIL
 import numpy
-import numpy as np
 from PIL import Image
 
 from modules.storysquad_storyboard.env import *
 from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_words_and_weights_list, \
-    get_frame_seed_data, StoryBoardPrompt, StoryBoardData, StoryBoardSeed
+    get_frame_seed_data
 
 long_story_test = """I had no idea that Mars has beaches! But as I walked along the red sand, I realized this was no ordinary beach day. Something in me still wanted to create a Martian sand-castle! Little did I know, building a sandcastle on Mars would be the least of my worries.Although everything was still, there was an eerie swirl to the atmosphere and ocean. I quickly realized that I was not alone, and whatever was out there was not friendly. This reminds me of those nights at Miami beach. But this time, I was far from home, and far from anyone who could save me. Hopefully my training was enough!  I took a deep breath and prepared for the fight of my life on the alien shores of Mars. With the Martian tremors I slowly realized that the monsters were just my imagination and the sand castles falling down was a result of the tremors. I let out a sigh of relief and enjoyed the rest of my day at the beach, grateful to have escaped my own mind's tricks.So I looked down at my vintage iPod and was wondering what an appropriate song would be for the rest of my afternoon here at the beach. And as I scrolled through my playlist, I couldn't help but smile as "Here Comes the Sun" by The Beatles started to play. With the song playing I couldn't help but start dancing along the beach! And as I danced, I felt the weight of my worries lifting, and I was able to fully enjoy this once-in-a-lifetime experience on the shores of Mars. And that's when I noticed the approaching sand storm!"""
 # from .storyboard_gr import StoryBoardGradio
@@ -37,7 +35,7 @@ class DefaultRender:
     tiling: bool = False
     batch_count: int = 1
     batch_size: int = MAX_BATCH_SIZE
-    sampler_index: int = 9
+    sampler_index: int = 8  # 9
 
 
 @dataclass
@@ -48,7 +46,7 @@ class SBIRenderParams:
     tiling: bool = False
     batch_count: int = 1
     batch_size: int = MAX_BATCH_SIZE
-    sampler_index: int = 9
+    sampler_index: int = 8  # 9
 
 
 def quick_timer(func, *args, **kwargs):
@@ -64,13 +62,75 @@ def quick_timer(func, *args, **kwargs):
     return end - start, result
 
 
-def get_img_diff(img1: Image, img2: Image) -> float:
-    # convert the PIL images to a numpy arrays
-    img1 = np.array(img1, dtype=np.float32)
-    img2 = np.array(img2, dtype=np.float32)
-    # find the mean difference per pixel
-    diff = np.mean(np.abs(img1 - img2))
-    return diff
+#def get_img_diff(img1: Image, img2: Image) -> float:
+#    # convert the PIL images to a numpy arrays
+#    img1 = np.array(img1, dtype=np.float32)
+#    img2 = np.array(img2, dtype=np.float32)
+#    # find the mean difference per pixel accounting for human eye color sensitivity
+#    #
+#
+#    diff = np.mean(np.abs(img1 - img2))
+#    return diff
+
+
+import numpy as np
+
+
+def get_img_diff(image1:PIL.Image, image2:PIL.Image, K1=0.01, K2=0.03, L=255):
+    """
+    Calculate the structural similarity index between two color images, accounting for the human visual system.
+
+    Parameters:
+    image1 (numpy.ndarray): An RGB image as a numpy array.
+    image2 (numpy.ndarray): An RGB image as a numpy array, with the same shape as image1.
+    K1 (float): A stability constant for SSIM calculation. Default is 0.01. K1 controls the
+                degree of luminance comparison in the SSIM calculation. Higher values of K1
+                give more weight to differences in luminance between the two images.
+    K2 (float): A stability constant for SSIM calculation. Default is 0.03. K2 controls the
+                degree of contrast comparison in the SSIM calculation. Higher values of K2
+                give more weight to differences in contrast between the two images.
+    L (float): The dynamic range of the pixel values. Default is 255.
+
+    Returns:
+    float: A value between 0 and 1 representing the difference between the two images. A value of 0 indicates that
+           the images are identical, while a value of 1 indicates that they are completely dissimilar.
+
+    Examples:
+    >>> import numpy as np
+    >>> img1 = np.zeros((10, 10, 3))*255
+    >>> img2 = np.ones((10, 10, 3))*255
+    >>> get_img_diff(img1, img2)
+    0.999899990025949
+    >>> img2 = np.zeros((10, 10, 3))*255
+    >>> get_img_diff(img1, img2)
+    0.0
+    """
+    # Convert the images to numpy
+    image1 = np.array(image1,dtype=np.float32)
+    image2 = np.array(image2,dtype=np.float32)
+
+    # Convert images to grayscale using weighted average of color channels
+    gray1 = 0.2989 * image1[..., 0] + 0.5870 * image1[..., 1] + 0.1140 * image1[..., 2]
+    gray2 = 0.2989 * image2[..., 0] + 0.5870 * image2[..., 1] + 0.1140 * image2[..., 2]
+
+    # Calculate mean and variance of input images
+    mu1 = np.mean(gray1)
+    mu2 = np.mean(gray2)
+    var1 = np.var(gray1)
+    var2 = np.var(gray2)
+    covar = np.cov(gray1.ravel(), gray2.ravel())[0][1]
+
+    # Set constants
+    C1 = (K1 * L) ** 2
+    C2 = (K2 * L) ** 2
+
+    # Calculate SSIM
+    numerator = (2 * mu1 * mu2 + C1) * (2 * covar + C2)
+    denominator = (mu1 ** 2 + mu2 ** 2 + C1) * (var1 + var2 + C2)
+    ssim = numerator / denominator
+
+    # Return difference score
+    return 1 - ssim
 
 
 def join_video_audio(video_file, audio_file):
@@ -260,22 +320,31 @@ def get_samples_from_gtts(text_to_read, slow=False) -> (numpy.ndarray, float):
     aud_length_secs = 0
     out = []
     for section in sections:
+        tmp_mp3_full_path = os.path.join(STORYBOARD_TMP_PATH, "tmp.mp3")
+        tmp_wav_full_path = os.path.join(STORYBOARD_TMP_PATH, "tmp.wav")
         audio = gTTS(
             text=section,
             lang="en",
             slow=slow,
         )
-        audio.save("tmp.mp3")
+        audio.save(tmp_mp3_full_path)
 
-        mpy.AudioFileClip("tmp.mp3").write_audiofile("tmp.wav")
-        with AudioFile("tmp.wav", "r") as f:
+        mpy.AudioFileClip(tmp_mp3_full_path).write_audiofile(tmp_wav_full_path)
+        with AudioFile(tmp_wav_full_path, "r") as f:
             aud_out = f.read(f.frames)
         # get the length of the audio
         aud_length_secs += (aud_out.shape[1] / GTTS_SAMPLE_RATE)
 
         # delete the files
-        os.remove("tmp.mp3")
-        os.remove("tmp.wav")
+
+        try:
+            os.remove(tmp_mp3_full_path)
+        except PermissionError as e:
+            print(f"PermissionError: {e}")
+            print(f"trying to delete {tmp_mp3_full_path}")
+            os.remove(tmp_mp3_full_path)
+
+        os.remove(tmp_wav_full_path)
         out.append(aud_out)
 
     return np.concatenate(out, axis=1), aud_length_secs
@@ -966,205 +1035,28 @@ def get_linear_interpolation(param: PIL.Image, param1: PIL.Image, t: float):
     return r_img
 
 
-def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, render_func, test=False,
-                                  early_stop=-1):
-    """
-    this function composes the other rendering function to render a storyboard
-    :param my_ren_p: the render parameters for the storyboard
-    :param storyboard_params: the storyboard parameters
-    :param ui_params: the ui parameters
-    :param render_func: the render function to use for rendering the SBMultiSampleArgs
-    :param test: if true, then the function will perform a quick test render
-    :param early_stop: if not -1, then the function will stop after this many seconds
-    >>> test_ui_params = ["test","nude",7,3,4,5,6,7,8,9,10,11,12,7.5]
-    >>> compose_storyboard_render_dev(DefaultRender(),None,test_ui_params ,lambda x: random.random() ,test=True)
-    """
-
-    if test:
-        voice_over_text = "one two three four five six seven eight nine ten"
-    else:
-        voice_over_text = ui_params[0]
-
-    # create the voice over
-    audio_f_path, vo_len_secs = create_voice_over_for_storyboard(voice_over_text, 1, DefaultRender.seconds)
-    # recalculate the storyboard params
-    my_ren_p.num_frames_per_section = int((my_ren_p.fps * vo_len_secs) / my_ren_p.sections)
-    my_ren_p.num_frames = my_ren_p.num_frames_per_section * my_ren_p.sections
-    my_ren_p.seconds = vo_len_secs
-
-    if test:
-        sb_prompts = [
-            "dog:1.0 cat:0.0",
-            "dog:0.5 cat:0.5",
-            "dog:0.0 cat:1.0",
-        ]
-        vo_len_secs = 60
-        my_ren_p.num_frames_per_section = int((my_ren_p.fps * vo_len_secs) / my_ren_p.sections)
-        my_ren_p.num_frames = my_ren_p.num_frames_per_section * my_ren_p.sections
-        my_ren_p.seconds = vo_len_secs
-        sb_seeds_list = [1, 2, 3]
-
-    else:
-        sb_prompts = [i.prompt for i in storyboard_params]
-        sb_seeds_list = [i.seed for i in storyboard_params]
-
-    sb_prompt = StoryBoardPrompt(sb_prompts, my_ren_p.seconds, False)
-    sb_seeds = StoryBoardSeed(sb_seeds_list,
-                              [my_ren_p.seconds * .5,
-                               my_ren_p.seconds]
-                              )
-    sb_data = StoryBoardData(
-        storyboard_seed=sb_seeds,
-        storyboard_prompt=sb_prompt
-    )
-
-    # TODO: need to find seeds/subseeds/weights for each prompt
-
-    ez_p_func: Callable[[Any], SBIHyperParams] = lambda ti: \
-        SBIHyperParams(prompt=sb_prompt[ti],
-                       negative_prompt=ui_params[1],
-                       steps=ui_params[2],
-                       seed=sb_seeds.get_prime_seeds_at_times(ti),
-                       subseed=sb_seeds.get_subseeds_at_times(ti),
-                       subseed_strength=sb_seeds.get_subseed_strength_at_times(ti),
-                       cfg_scale=ui_params[13]
-                       )
-
-    ez_r_func: Callable[[Any], Any] = lambda x: render_func(SBMultiSampleArgs(hyper=ez_p_func(x), render=my_ren_p))
-
-    all_imgs_by_seconds = {
-        np.float64(0): ez_r_func(0.0).all_images[-1],
-        np.float64(my_ren_p.seconds): ez_r_func(my_ren_p.seconds).all_images[-1],
-    }
-    all_imgs_by_seconds[0.0].info = {"frame_type": "g"}
-    all_imgs_by_seconds[my_ren_p.seconds].info = {"frame_type": "g"}
-
-    # imgs_pairs_by_diff = {
-    #    get_img_diff(imgs_by_seconds[0], imgs_by_seconds[my_ren_p.seconds]): (
-    #        list(imgs_by_seconds.keys())[0], list(imgs_by_seconds.keys())[1])
-    # }
-
-    done_pairs = []
-    while True:
-        all_imgs_by_seconds = dict(sorted(all_imgs_by_seconds.items()))
-        non_interp_imgs_by_seconds = \
-            {k: v for k, v in all_imgs_by_seconds.items() if
-             "frame_type" not in v.info or v.info["frame_type"] != "i"}
-
-        imgs_by_seconds_keys_list = list(all_imgs_by_seconds.keys())
-        # find the largest difference in means between two records
-        frame_deltas = get_frame_deltas(list(all_imgs_by_seconds.values()))
-
-        canidate_imgs_pairs_by_diff = []  # [delta, seconds_idx_1, seconds_idx_2]
-        for delta_idx in range(len(frame_deltas)):
-            time_pair = (imgs_by_seconds_keys_list[delta_idx], imgs_by_seconds_keys_list[delta_idx + 1])
-            time_pair_img_infos = [all_imgs_by_seconds[time_pair[0]].info,
-                                   all_imgs_by_seconds[time_pair[1]].info]
-
-            if time_pair not in done_pairs:
-                canidate_imgs_pairs_by_diff.append(
-                    (frame_deltas[delta_idx],
-                     (imgs_by_seconds_keys_list[delta_idx],
-                      imgs_by_seconds_keys_list[delta_idx + 1])
-                     )
-                )
-        # update the list to be scores based on the delta and if the frame is an i type
-        new = []
-        for k, v in canidate_imgs_pairs_by_diff:
-            if "i" in all_imgs_by_seconds[v[0]].info["frame_type"]:
-                new.append((k * 0, v))
-            else:
-                new.append((k, v))
-        canidate_imgs_pairs_by_diff = new
-        # sort so that the largest difference is first
-        imgs_pairs_by_diff_sorted = sorted(canidate_imgs_pairs_by_diff, key=lambda x: x[0], reverse=True)
-
-        maxdiff = imgs_pairs_by_diff_sorted[0][0]
-        print(f"worst pair diff: {maxdiff}")
-        # if the largest difference is less than some value then we are done
-        # if we have rendered enough images, then stop
-
-        if maxdiff < 2.0:
-            if len(all_imgs_by_seconds) >= int(my_ren_p.num_frames * .8):
-                print(f'done because of low maxdiff')
-                break
-
-        if len(all_imgs_by_seconds) >= int(my_ren_p.num_frames * 1.2):
-            print(f'done because of too many frames")')
-            break
-
-        # get a batch of the worst images
-        worst_pairs_batch = imgs_pairs_by_diff_sorted[:MAX_BATCH_SIZE]
-
-        # update done_pairs
-        pairs_to_do = [v[1] for v in worst_pairs_batch]
-        done_pairs.append(pairs_to_do)
-
-        # get the target times for each pair
-        target_times = [np.mean(v[1:]) for v in worst_pairs_batch]
-
-        # render the batch
-        imgs = ez_r_func(target_times).all_images
-        imgs = imgs[1:] or [imgs[0]]
-        pairs_done_this_iter = pairs_to_do
-        del pairs_to_do
-
-        tt_imgs = zip(target_times, pairs_done_this_iter, imgs)
-        # only keep the images that decrease the difference
-        for t_of_f, src_pair, g_img in tt_imgs:
-            imga = all_imgs_by_seconds[src_pair[0]]
-            imgb = all_imgs_by_seconds[src_pair[1]]
-            time_of_segment = src_pair[1] - src_pair[0]
-            segmnt_per_of_time = time_of_segment / sb_prompt.total_seconds
-
-            diff_a = get_img_diff(imga, g_img)
-            diff_b = get_img_diff(g_img, imgb)
-            # mean_ab = (diff_a + diff_b) / 2 # judging on this creates an no escape issue when one dif is 0
-            # this is the difference between the two images
-            # TODO: this maybe can be safely retrieved from frame_deltas
-            diff_orig = get_img_diff(imga, imgb)
-
-            if len(all_imgs_by_seconds) < int(my_ren_p.num_frames * .1):
-                frame_type = "keyframe"
-            elif diff_a == 0 or diff_b == 0:
-                print(f'frame {t_of_f} from pair {src_pair} must be i frame because a diff is 0')
-                frame_type = "i"
-            elif time_of_segment < (1 / my_ren_p.fps):  # if the segment is less than a frame
-                frame_type = "i"
-            else:
-                frame_type = "g"
-
-            if frame_type == "keyframe" or frame_type == "g":
-                print(f'adding -{frame_type}- frame @ time: {t_of_f} for pair: {src_pair}')
-                g_img.info["frame_type"] = "g"
-                all_imgs_by_seconds[t_of_f] = g_img
-            elif frame_type == "i":
-                # report what we did not add
-                # print( f'not adding time: {t} for pair: {p}')
-                # add a linear interpolation between the two images
-                # print(f'adding -{frame_type}- (interpolation) frame between {src_pair[0]} and {src_pair[1]}')
-                i_frames_needed = round(diff_orig / 3) + 1
-                print(
-                    f'adding {i_frames_needed} -{frame_type}- (interpolation) frames between {src_pair[0]} and {src_pair[1]}')
-                imga.info["frame_type"] += "i"
-                imgb.info["frame_type"] = "i" + imgb.info["frame_type"]
-
-                for p in np.arange(0, 1, 1 / i_frames_needed):
-                    k = p * time_of_segment + src_pair[0]
-                    v = get_linear_interpolation(imga, imgb, p)
-                    v.info["frame_type"] = "i"
-                    all_imgs_by_seconds[k] = v
-
+def save_tmp_images_for_debug(all_imgs_by_seconds, loop_count):
     for k, v in all_imgs_by_seconds.items():
-        print(k)
-    print(f'total of {len(all_imgs_by_seconds)} frames')
+        pth = os.path.join(STORYBOARD_TMP_PATH, f"tmp_{loop_count}")
+        # create the directory if it doesn't exist
+        if not os.path.exists(pth):
+            os.mkdir(pth)
 
-    images_to_save = [i for i in all_imgs_by_seconds.values()]
-    for k, v in all_imgs_by_seconds.items():
-        v.save(f'tmp_{k}.png')
+        ft = v.info["frame_type"] if "frame_type" in v.info else "n"
+        fn = f"tmp_{ft}_{k}"
+        fext = "png"
 
-    target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save)
-    return target_mp4_f_path
+        full_pth = os.path.join(pth, f"tmp_{ft}_{k}.png")
+
+        from modules.images import save_image
+        # v.save(full_pth)
+        save_image(image=v,
+                   basename=fn,
+                   path=pth,
+                   forced_filename=fn,
+                   extension=fext,
+                   existing_info=v.info,
+                   )
 
 
 def compose_storyboard_render(my_render_params, all_state, early_stop, storyboard_params, test,
@@ -1175,7 +1067,6 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
 
     # the audio is rendered first, attempting to reach some target length.
     # the video is rendered second, to match the length of the resultant audio
-    from modules.shared import opts, Options
 
     mytext = ui_params[0]
     if test or test_render:
