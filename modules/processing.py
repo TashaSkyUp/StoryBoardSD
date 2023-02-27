@@ -522,20 +522,13 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 break
 
             with devices.autocast():
-                print("starting to get conditionings - part1")
-                ttt = time.time()
                 uc = prompt_parser.get_learned_conditioning(shared.sd_model, tuple(len(prompts) * [p.negative_prompt]), p.steps)
-                print(f"part1 time: {time.time()-ttt}")
-
-                ttt = time.time()
-                print("starting to get conditionings - part2")
                 c = prompt_parser.get_multicond_learned_conditioning(
                     shared.sd_model,
                     tuple(prompts),
                     p.steps,
                     debug=True
                 )
-                print(f'part2 time: {time.time() - ttt}')
 
             if len(model_hijack.comments) > 0:
                 for comment in model_hijack.comments:
