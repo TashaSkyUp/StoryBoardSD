@@ -62,17 +62,6 @@ def quick_timer(func, *args, **kwargs):
     return end - start, result
 
 
-#def get_img_diff(img1: Image, img2: Image) -> float:
-#    # convert the PIL images to a numpy arrays
-#    img1 = np.array(img1, dtype=np.float32)
-#    img2 = np.array(img2, dtype=np.float32)
-#    # find the mean difference per pixel accounting for human eye color sensitivity
-#    #
-#
-#    diff = np.mean(np.abs(img1 - img2))
-#    return diff
-
-
 import numpy as np
 
 
