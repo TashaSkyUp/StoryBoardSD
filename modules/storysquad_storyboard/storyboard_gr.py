@@ -1,3 +1,5 @@
+from modules.storysquad_storyboard.branched_renderer import compose_storyboard_render_dev
+
 print(__name__)
 from modules.storysquad_storyboard.sb_rendering import *
 import gradio.components
