@@ -172,7 +172,6 @@ def get_test_storyboard():
 
 class StoryBoardGradio:
     def __init__(self):
-        import gradio as gr
         class comp_helper:
             story_squad_interface = None
             render_button = None
