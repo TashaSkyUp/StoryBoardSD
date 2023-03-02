@@ -271,11 +271,18 @@ def rfind_list(text, to_find: list):
     finds = [text.rfind(i) + len(i) for i in to_find if text.rfind(i) != -1]
     finds.sort()
     if len(finds) == 0:
-        low_priority = [' ', ',']
+        low_priority = [',']
         finds = [text.rfind(i) + len(i) for i in low_priority if text.rfind(i) != -1]
         finds.sort()
         if len(finds) == 0:
-            return len(text)
+            low_priority = [' ']
+            finds = [text.rfind(i) + len(i) for i in low_priority if text.rfind(i) != -1]
+            finds.sort()
+            if len(finds) == 0:
+                return len(text)
+            else:
+                return finds[-1]
+
         else:
             return finds[-1]
 
@@ -284,7 +291,7 @@ def rfind_list(text, to_find: list):
 
 def get_samples_from_gtts(text_to_read, slow=False) -> (numpy.ndarray, float):
     """
-    >>> get_samples_from_gtts(long_story_test)
+    >>> get_samples_from_gtts(long_story_test_prompt)
     """
     # TODO: this needs paraellization see https://gtts.readthedocs.io/en/latest/tokenizer.html#minimizing
     # 100 characters per request
@@ -316,7 +323,8 @@ def get_samples_from_gtts(text_to_read, slow=False) -> (numpy.ndarray, float):
             lang="en",
             slow=slow,
         )
-        audio.save(tmp_mp3_full_path)
+        if section != " ":
+            audio.save(tmp_mp3_full_path)
 
         mpy.AudioFileClip(tmp_mp3_full_path).write_audiofile(tmp_wav_full_path)
         with AudioFile(tmp_wav_full_path, "r") as f:
