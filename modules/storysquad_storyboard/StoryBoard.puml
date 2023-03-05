@@ -1,31 +1,75 @@
 @startuml
 'https://plantuml.com/object-diagram
-' make a place for a discription
-
-
+' make a place for a description
 
 ' makes a place for the subtitle'
-header <font color=blue>**StoryBoard Diagram**</font>
+center header <font color=blue size=22>StoryBoard Diagrams</font>
 
+folder "import diagram"{
+    class webui
+    class stablediffusion
+    webui <- stablediffusion
+    folder modules{
+        folder storysquad_storyboard{
+            class storyboard_gr
+            class sb_rendering
+            class sb_sd_rendering
+            class storyboard
+            class env
+            storyboard_gr <-- sb_rendering
+            storyboard_gr <-- sb_sd_rendering
+            storyboard_gr <-- storyboard
 
+            storyboard_gr <-- env
+            storyboard <-- env
+            sb_sd_rendering <-- env
+            sb_rendering <-- env
+            sb_rendering <-- storyboard
 
-    map StoryBoard {
-
-     HelixPoints => SBImage
-     Prompt_embeddings => np.array
-     get_SBMultiSampleArgs => SBMultiSampleArgs
+            webui <--- storyboard_gr
+        }
     }
-
-map SBIHyperParams{
-    Prompt => StoryBoardPrompt
 }
-map SBImage {
+allowmixing
+folder "data flow diagram"{
+    class webui_
+    class stablediffusion_
+    webui_ <- stablediffusion_
+    folder storysquad_storyboard_{
+        class storyboard_gr_
+        class sb_rendering_
+        class sb_sd_rendering_
+        class storyboard_
+        class env_
+        storyboard_gr_ <--> sb_rendering_
+        storyboard_gr_ <--> sb_sd_rendering_
+        storyboard_gr_ --> storyboard_
 
-    hyperParams => SBIHyperParams
-    renderParams => SBIRenderParams
+        storyboard_gr_ <-- env_
+        storyboard_ <-- env_
+        sb_sd_rendering_ <-- env_
+        sb_rendering_ <-- env_
+        sb_rendering_ <-- storyboard_
+
+        webui_ <---> storyboard_gr_
+        folder SB_RENDERS{
+            class movie
+            folder temp{
+                 card tmp_frames
+                 card tmp_movies
+                 card tmp_audio
+            }
+        }
+        sb_rendering_ --> movie
+        sb_rendering_ --> temp
+        sb_sd_rendering_ <--> sb_rendering_
+    }
 }
 
+'storyboard_gr -- sb_rendering
+'storyboard_gr -- sb_sd_rendering
+'storyboard_gr -- storyboard
 
-StoryBoard::HelixPoints --> SBImage
-SBImage::hyperParams --> SBIHyperParams
+'modules -right-> cloned modules
+
 @enduml
