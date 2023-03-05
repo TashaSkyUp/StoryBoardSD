@@ -1,0 +1,52 @@
+@startuml
+
+title Renderer Flow
+
+start
+
+:Seed image list with a batch of images;
+:Calculate frame deltas;
+
+while (maxdiff >= minimum_via_diff and length(all_imgs_by_seconds) < num_frames * 1.1)
+
+    :Sort all images by time;
+    :Find the largest difference in means between two records;
+    :Construct the list of candidate pairs;
+
+    if (there are no candidate pairs) then
+        if (length(all_imgs_by_seconds) >= num_frames * 0.9) then
+            :End rendering;
+            break;
+        else
+            :Lower the minimum via diff to get more frames;
+            :Continue;
+        endif
+    endif
+
+    :Update the list of pairs that have been done;
+    :Get the target times for each pair;
+
+    if (there are worst pairs to generate) then
+        :Update pairs done this iteration;
+    endif
+
+    :Interpolate the I type frames;
+    :Handle the incoming frames;
+
+    if (the largest difference is less than some value then we are done)
+        if (we have rendered enough images) then
+            :End rendering;
+            break;
+        endif
+    endif
+
+    if (we have rendered enough images) then
+        :End rendering;
+        break;
+    endif
+
+endwhile
+
+stop
+
+@enduml

@@ -1,10 +1,13 @@
 import random
 import logging
 import time
+from PIL import Image
 from typing import Callable, Any
 from modules.storysquad_storyboard.sb_rendering import SBImageResults
 import numpy as np
 from modules.storysquad_storyboard.constants import *
+
+logging.basicConfig(filename="branched_renderer.log")
 
 from modules.storysquad_storyboard.sb_rendering import DefaultRender, create_voice_over_for_storyboard, \
     SBMultiSampleArgs, save_tmp_images_for_debug, get_frame_deltas, MAX_BATCH_SIZE, get_linear_interpolation, \
@@ -91,19 +94,38 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
                                    my_ren_p.seconds)
 
     for k, v in all_imgs_by_seconds.items():
-        logging.info(k)
-    logging.info(f'total of {len(all_imgs_by_seconds)} frames')
+        logging.info(msg=k)
+    logging.info(msg=f'total of {len(all_imgs_by_seconds)} frames')
 
     images_to_save = [i for i in all_imgs_by_seconds.values()]
     images_to_save = [i for i in all_imgs_by_seconds.values()]
 
-    target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save,my_ren_p.fps)
+    target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save, my_ren_p.fps)
     end_time = time.time()
     logging.info(f"total time: {end_time - start_time}")
     return target_mp4_f_path
 
 
-def renderer(minimum_via_diff, num_frames, num_keyframes, rend_func, sb_prompt, seconds_length):
+#def renderer(minimum_via_diff, num_frames, num_keyframes, rend_func, sb_prompt, seconds_length):
+def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_func: callable, sb_prompt: str,
+                 seconds_length: float) -> [Image]:
+    """
+    Renders a sequence of images using the given rendering function.
+
+    Args:
+        minimum_via_diff (float): The minimum mean difference required to generate new frames.
+        num_frames (int): The total number of frames to generate.
+        num_keyframes (int): The number of keyframes to use when generating the image sequence.
+        rend_func (callable): The rendering function to use to generate the images.
+        sb_prompt (str): The text to display as a prompt when rendering each image.
+        seconds_length (float): The duration of the sequence in seconds.
+
+    Returns:
+        List[Image]: A list of the rendered images.
+
+    Raises:
+        ValueError: If any of the arguments are invalid or the rendering function fails.
+    """
     # seed the image list with a batch of images
     all_imgs_by_seconds_times = [i for i in np.arange(0, seconds_length, seconds_length / MAX_BATCH_SIZE)]
     all_imgs_by_seconds_images = rend_func(all_imgs_by_seconds_times).all_images[-MAX_BATCH_SIZE:]
@@ -116,10 +138,6 @@ def renderer(minimum_via_diff, num_frames, num_keyframes, rend_func, sb_prompt, 
     while True:
         loop_count += 1
         all_imgs_by_seconds = dict(sorted(all_imgs_by_seconds.items()))
-
-        # save every 10th frame for debug
-        # if loop_count % 10 == 0:
-        # save_tmp_images_for_debug(all_imgs_by_seconds, loop_count)
 
         imgs_by_seconds_keys_list = list(all_imgs_by_seconds.keys())
         # find the largest difference in means between two records
@@ -263,7 +281,7 @@ def renderer(minimum_via_diff, num_frames, num_keyframes, rend_func, sb_prompt, 
                 # the above actually needs to be changed because the difference score is now from 0 to 1 instead of 0 to 255
 
                 logging.info(f'adding {i_frames_needed} -{frame_type}'
-                      f'- (interpolation) frames between {src_pair[0]} and {src_pair[1]}')
+                             f'- (interpolation) frames between {src_pair[0]} and {src_pair[1]}')
 
                 p_s = np.interp(fp=[0, 1],
                                 xp=[0, 1],
@@ -281,6 +299,9 @@ def renderer(minimum_via_diff, num_frames, num_keyframes, rend_func, sb_prompt, 
 
 
 def do_compose_setup(my_ren_p, storyboard_params, ui_params, render_func):
+    """
+    This function sets up the compose function, it also generates the audio for the voice-over.
+    """
     voice_over_text = ui_params[0]
     # create the voice-over
     audio_f_path, vo_len_secs = create_voice_over_for_storyboard(voice_over_text, 1, DefaultRender.seconds)
@@ -304,6 +325,9 @@ def do_compose_setup(my_ren_p, storyboard_params, ui_params, render_func):
 
 
 def get_rend_func(sb_prompt: StoryBoardPrompt, sb_seeds: StoryBoardSeed, ui_params: [], my_ren_p, render_func):
+    """
+    This function composes the render function that will be used to call the render function
+    """
     get_sbih_for_time: Callable[[Any], SBIHyperParams] = lambda time_idx: \
         SBIHyperParams(prompt=sb_prompt[time_idx],
                        negative_prompt=ui_params[1],
