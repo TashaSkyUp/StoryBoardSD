@@ -2,6 +2,7 @@ import random
 from typing import Callable, Any
 
 import numpy as np
+from modules.storysquad_storyboard.constants import *
 
 from modules.storysquad_storyboard.sb_rendering import DefaultRender, create_voice_over_for_storyboard, \
     SBMultiSampleArgs, save_tmp_images_for_debug, get_frame_deltas, MAX_BATCH_SIZE, get_linear_interpolation, \
