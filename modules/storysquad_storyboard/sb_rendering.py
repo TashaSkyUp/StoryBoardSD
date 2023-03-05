@@ -63,7 +63,7 @@ def quick_timer(func, *args, **kwargs):
 import numpy as np
 
 
-def get_img_diff(image1:PIL.Image, image2:PIL.Image, K1=0.01, K2=0.03, L=255):
+def get_img_diff(image1: PIL.Image, image2: PIL.Image, K1=0.01, K2=0.03, L=255):
     """
     Calculate the structural similarity index between two color images, accounting for the human visual system.
 
@@ -93,8 +93,10 @@ def get_img_diff(image1:PIL.Image, image2:PIL.Image, K1=0.01, K2=0.03, L=255):
     0.0
     """
     # Convert the images to numpy
-    image1 = np.array(image1,dtype=np.float32)
-    image2 = np.array(image2,dtype=np.float32)
+    image1 = np.array(image1, dtype=np.float32)
+    image2 = np.array(image2, dtype=np.float32)
+    if image1.shape != image2.shape:
+        raise ValueError("The two images must have the same shape.")
 
     # Convert images to grayscale using weighted average of color channels
     gray1 = 0.2989 * image1[..., 0] + 0.5870 * image1[..., 1] + 0.1140 * image1[..., 2]
@@ -174,7 +176,7 @@ def create_voice_over_for_storyboard(text_to_read, speech_speed, vo_length_sec):
     ...  import os
     ...  # print the current directory
     ...  print(os.getcwd())
-    ...  create_voice_over_for_storyboard(long_story_test, None, 10)
+    ...  create_voice_over_for_storyboard(long_story_test_prompt, None, 10)
     ...  break
     """
     # time everything
@@ -324,23 +326,23 @@ def get_samples_from_gtts(text_to_read, slow=False) -> (numpy.ndarray, float):
         if section != " ":
             audio.save(tmp_mp3_full_path)
 
-        mpy.AudioFileClip(tmp_mp3_full_path).write_audiofile(tmp_wav_full_path)
-        with AudioFile(tmp_wav_full_path, "r") as f:
-            aud_out = f.read(f.frames)
-        # get the length of the audio
-        aud_length_secs += (aud_out.shape[1] / GTTS_SAMPLE_RATE)
+            mpy.AudioFileClip(tmp_mp3_full_path).write_audiofile(tmp_wav_full_path)
+            with AudioFile(tmp_wav_full_path, "r") as f:
+                aud_out = f.read(f.frames)
+            # get the length of the audio
+            aud_length_secs += (aud_out.shape[1] / GTTS_SAMPLE_RATE)
 
-        # delete the files
+            # delete the files
 
-        try:
-            os.remove(tmp_mp3_full_path)
-        except PermissionError as e:
-            print(f"PermissionError: {e}")
-            print(f"trying to delete {tmp_mp3_full_path}")
-            os.remove(tmp_mp3_full_path)
+            try:
+                os.remove(tmp_mp3_full_path)
+            except PermissionError as e:
+                print(f"PermissionError: {e}")
+                print(f"trying to delete {tmp_mp3_full_path}")
+                os.remove(tmp_mp3_full_path)
 
-        os.remove(tmp_wav_full_path)
-        out.append(aud_out)
+            os.remove(tmp_wav_full_path)
+            out.append(aud_out)
 
     return np.concatenate(out, axis=1), aud_length_secs
 
@@ -428,7 +430,7 @@ def make_mp4_from_images(image_list, filepath, filename, width, height, keep, fp
 
     # make the mp4
 
-    return make_mp4(f"{temp_folder_path}", filepath, filename, width, height, keep, fps=DefaultRender.fps)
+    return make_mp4(f"{temp_folder_path}", filepath, filename, width, height, keep, fps=fps)
 
 
 def get_frame_values_for_prompt_word_weights(prompts, num_frames):  # list[sections[frames[word:weight tuples]]]
@@ -1120,7 +1122,7 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
     return all_state, target_mp4_f_path
 
 
-def compose_file_handling(audio_f_path, images_to_save):
+def compose_file_handling(audio_f_path, images_to_save,fps=DefaultRender.fps):
     working_dir = os.path.join(STORYBOARD_RENDER_PATH, "tmp")
     print(f'working_dir: {working_dir}')
     print(f'audio_f_path: {audio_f_path}')
@@ -1128,7 +1130,7 @@ def compose_file_handling(audio_f_path, images_to_save):
         images_to_save,
         working_dir,
         "video.mp4", 512, 512, False,
-        fps=DefaultRender.fps,
+        fps=fps,
         filter_func=lambda x: limit_per_pixel_change_slice(x, .5))
     print(f'video_f_path: {video_f_path}')
     complete_mp4_f_path = join_video_audio(video_f_path, audio_f_path)
