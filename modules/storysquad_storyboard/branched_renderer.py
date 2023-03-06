@@ -82,8 +82,12 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
             do_testing(my_ren_p, storyboard_params, ui_params, sb_rend_func)
 
     elif test == False:
-        audio_f_path, num_keyframes, rend_func, sb_prompt = do_compose_setup(my_ren_p, storyboard_params, test,
-                                                                             ui_params, sb_rend_func)
+        audio_f_path, num_keyframes, rend_func, sb_prompt = do_compose_setup(
+            my_ren_p,
+            storyboard_params,
+            ui_params,
+            sb_rend_func
+        )
     rend_func: Callable[[float], SBImageResults] = rend_func
 
     num_frames = my_ren_p.num_frames
