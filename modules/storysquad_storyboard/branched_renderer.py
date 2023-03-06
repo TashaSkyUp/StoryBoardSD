@@ -7,7 +7,10 @@ from modules.storysquad_storyboard.sb_rendering import SBImageResults
 import numpy as np
 from modules.storysquad_storyboard.constants import *
 
-logging.basicConfig(filename="branched_renderer.log")
+logging.basicConfig(filename="branched_renderer.log",level=1)
+logger:logging.Logger = logging.getLogger("BranchedRenderer")
+logger.setLevel(logging.DEBUG)
+logger.info("entering branched renderer")
 
 from modules.storysquad_storyboard.sb_rendering import DefaultRender, create_voice_over_for_storyboard, \
     SBMultiSampleArgs, save_tmp_images_for_debug, get_frame_deltas, MAX_BATCH_SIZE, get_linear_interpolation, \
@@ -94,15 +97,15 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
                                    my_ren_p.seconds)
 
     for k, v in all_imgs_by_seconds.items():
-        logging.info(msg=k)
-    logging.info(msg=f'total of {len(all_imgs_by_seconds)} frames')
+        logger.info(msg=k)
+    logger.info(msg=f'total of {len(all_imgs_by_seconds)} frames')
 
     images_to_save = [i for i in all_imgs_by_seconds.values()]
     images_to_save = [i for i in all_imgs_by_seconds.values()]
 
     target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save, my_ren_p.fps)
     end_time = time.time()
-    logging.info(f"total time: {end_time - start_time}")
+    logger.info(f"total time: {end_time - start_time}")
     return target_mp4_f_path
 
 
@@ -156,23 +159,23 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
                      )
                 )
             else:
-                logging.info(f"skipping {time_pair} because it was already done")
+                logger.info(f"skipping {time_pair} because it was already done")
 
         imgs_pairs_by_diff_sorted = sorted(candidate_img_pairs_by_diff, key=lambda x: x[0], reverse=True)
 
         maxdiff = imgs_pairs_by_diff_sorted[0][0]
-        logging.info(f"worst pair diff: {maxdiff},mean: {np.mean(frame_deltas)}")
+        logger.info(f"worst pair diff: {maxdiff},mean: {np.mean(frame_deltas)}")
 
         # if the largest difference is less than some value then we are done
         # if we have rendered enough images, then stop
         if maxdiff < minimum_via_diff:
             if maxdiff < (minimum_via_diff * .1):
                 if len(all_imgs_by_seconds) >= int(num_frames * .9):
-                    logging.info(f'done because of low maxdiff')
+                    logger.info(f'done because of low maxdiff')
                     break
 
         if len(all_imgs_by_seconds) >= int(num_frames * 1.1):
-            logging.info(f'done because of too many frames")')
+            logger.info(f'done because of too many frames")')
             break
 
         # get a batch of the worst images
@@ -194,15 +197,15 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
         # if there are no pairs to generate, then we need to look at if we have enough frames to be done
         if len(worst_pairs_gen_batch) == 0 and len(worst_pairs_int_batch) == 0:
             if len(all_imgs_by_seconds) >= int(num_frames * .9):
-                logging.info(f"done due to nothing to do")
+                logger.info(f"done due to nothing to do")
                 break
             else:
                 # this is not necessarily necessary...up to Product team.
                 # this means that we are not done, but we don't have enough frames to be done,
                 # so we need to lower the minimum via diff to get more frames
-                logging.info(f"lowing target maxdiff because of nothing to do")
+                logger.info(f"lowing target maxdiff because of nothing to do")
                 minimum_via_diff = minimum_via_diff * .9
-                logging.info(f"new minimum_via_diff: {minimum_via_diff} old: {minimum_via_diff * 1.1}")
+                logger.info(f"new minimum_via_diff: {minimum_via_diff} old: {minimum_via_diff * 1.1}")
                 continue
 
         # update done_pairs
@@ -214,7 +217,7 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
 
         # render the batch
         if len(target_times) > 0:
-            imgs = rend_func(target_times).all_imagexs
+            imgs = rend_func(target_times).all_images
             imgs = imgs[1:] or [imgs[0]]
             pairs_done_this_iter = pairs_to_gen
             del pairs_to_gen
@@ -257,21 +260,21 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
             diff_orig = get_img_diff(imga, imgb)
 
             if diff_a <= 0.0002 or diff_b <= 0.0002:
-                logging.info(f'frame {t_of_f} from pair {src_pair} must be i frame because a diff is 0')
+                logger.info(f'frame {t_of_f} from pair {src_pair} must be i frame because a diff is 0')
                 frame_type = "i"
             elif len(all_imgs_by_seconds) < num_keyframes:
                 frame_type = "keyframe"
             # elif time_of_segment < (1 / my_ren_p.fps):  # if the segment is less than a frame
             #    frame_type = "i"
-            #    logging.info(f'frame {t_of_f} from pair {src_pair} must be i frame because segment is less than a frame')
+            #    logger.info(f'frame {t_of_f} from pair {src_pair} must be i frame because segment is less than a frame')
             elif diff_a <= diff_orig and diff_b < diff_orig:  # if the difference is less than the original difference
                 frame_type = "g"
-                logging.info(f'frame {t_of_f} from pair {src_pair} must be g frame because a diff is less than orig')
+                logger.info(f'frame {t_of_f} from pair {src_pair} must be g frame because a diff is less than orig')
             else:  # if the difference is greater than the original difference
                 frame_type = "i"
 
             if frame_type == "keyframe" or frame_type == "g":
-                logging.info(f'adding -{frame_type}- frame @ time: {t_of_f} for pair: {src_pair}')
+                logger.info(f'adding -{frame_type}- frame @ time: {t_of_f} for pair: {src_pair}')
                 g_img.info["frame_type"] = "g"
                 all_imgs_by_seconds[t_of_f] = g_img
 
@@ -280,7 +283,7 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
                 i_frames_needed = min(i_frames_needed, 1)
                 # the above actually needs to be changed because the difference score is now from 0 to 1 instead of 0 to 255
 
-                logging.info(f'adding {i_frames_needed} -{frame_type}'
+                logger.info(f'adding {i_frames_needed} -{frame_type}'
                              f'- (interpolation) frames between {src_pair[0]} and {src_pair[1]}')
 
                 p_s = np.interp(fp=[0, 1],
