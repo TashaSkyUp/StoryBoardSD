@@ -140,7 +140,9 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
     >>> get_prompt_words_and_weights_list(f'test list:\\n\\thello:1 world:.2 how are (you:1.0)')
     [('test', 1.0), ('list', 1.0), ('hello', 1.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     >>> get_prompt_words_and_weights_list("")
-    []
+    Traceback (most recent call last):
+        ...
+    ValueError: prompt cannot be empty
     >>> get_prompt_words_and_weights_list("hello")
     [('hello', 1.0)]
     >>> get_prompt_words_and_weights_list("hello:0.5")
