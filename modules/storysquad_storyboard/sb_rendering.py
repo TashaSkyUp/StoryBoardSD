@@ -13,7 +13,7 @@ from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_
 from modules.storysquad_storyboard.constants import *
 
 GTTS_SAMPLE_RATE = 24000.0
-MAX_BATCH_SIZE = 10
+MAX_BATCH_SIZE = 9
 NUM_SB_IMAGES = 3
 
 
