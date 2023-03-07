@@ -103,7 +103,10 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
                                    my_ren_p.seconds)
 
     for k, v in all_imgs_by_seconds.items():
-        logger.info(msg=k)
+        if "frame_type" not in v.info:
+            v.info["frame_type"] = "unknown"
+        logger.info(msg=f'time: {k}, frame type: {v.info["frame_type"]}')
+
     logger.info(msg=f'total of {len(all_imgs_by_seconds)} frames')
 
     images_to_save = [i for i in all_imgs_by_seconds.values()]
