@@ -65,6 +65,34 @@ plain: /([^\\\[\]():|]|\\.)+/
 %import common.SIGNED_NUMBER -> NUMBER
 """)
 
+def get_learned_conditioning_prompt_schedules(prompts, steps):
+    """
+    >>> g = lambda p: get_learned_conditioning_prompt_schedules([p], 10)[0]
+    >>> g("test")
+    [[10, 'test']]
+    >>> g("a [b:3]")
+    [[3, 'a '], [10, 'a b']]
+    >>> g("a [b: 3]")
+    [[3, 'a '], [10, 'a b']]
+    >>> g("a [[[b]]:2]")
+    [[2, 'a '], [10, 'a [[b]]']]
+    >>> g("[(a:2):3]")
+    [[3, ''], [10, '(a:2)']]
+    >>> g("a [b : c : 1] d")
+    [[1, 'a b  d'], [10, 'a  c  d']]
+    >>> g("a[b:[c:d:2]:1]e")
+    [[1, 'abe'], [2, 'ace'], [10, 'ade']]
+    >>> g("a [unbalanced")
+    [[10, 'a [unbalanced']]
+    >>> g("a [b:.5] c")
+    [[5, 'a  c'], [10, 'a b c']]
+    >>> g("a [{b|d{:.5] c")  # not handling this right now
+    [[5, 'a  c'], [10, 'a {b|d{ c']]
+    >>> g("((a][:b:c [d:3]")
+    [[3, '((a][:b:c '], [10, '((a][:b:c d']]
+    >>> g("[a|(b:1.1)]")
+    [[1, 'a'], [2, '(b:1.1)'], [3, 'a'], [4, '(b:1.1)'], [5, 'a'], [6, '(b:1.1)'], [7, 'a'], [8, '(b:1.1)'], [9, 'a'], [10, '(b:1.1)']]
+    """
 
 def collect_steps(steps, tree):
     l = [steps]
@@ -108,7 +136,7 @@ def at_step(step, tree):
 
         def __default__(self, data, children, meta):
             for child in children:
-                yield from child
+                yield child
 
     return AtStep().transform(tree)
 
@@ -498,6 +526,7 @@ re_attention = re.compile(r"""
 :
 """, re.X)
 
+re_break = re.compile(r"\s*\bBREAK\b\s*", re.S)
 
 def parse_prompt_attention(text):
     """
@@ -555,7 +584,11 @@ def parse_prompt_attention(text):
         elif text == ']' and len(square_brackets) > 0:
             multiply_range(square_brackets.pop(), square_bracket_multiplier)
         else:
-            res.append([text, 1.0])
+            parts = re.split(re_break, text)
+            for i, part in enumerate(parts):
+                if i > 0:
+                    res.append(["BREAK", -1])
+                res.append([part, 1.0])
 
     for pos in round_brackets:
         multiply_range(pos, round_bracket_multiplier)
