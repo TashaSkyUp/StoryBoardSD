@@ -77,6 +77,8 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
     >>> compose_storyboard_render_dev(DefaultRender(),None,test_ui_params ,lambda x: random.random() ,test=True)
     """
     start_time = time.time()
+    my_ren_p.width = ui_params[4]
+    my_ren_p.height = ui_params[5]
     if test == True:
         audio_f_path, num_keyframes, rend_func, sb_prompt = \
             do_testing(my_ren_p, storyboard_params, ui_params, sb_rend_func)
@@ -107,7 +109,7 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
     images_to_save = [i for i in all_imgs_by_seconds.values()]
     images_to_save = [i for i in all_imgs_by_seconds.values()]
 
-    target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save, my_ren_p.fps)
+    target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save, my_ren_p.fps, my_ren_p.width, my_ren_p.height)
     end_time = time.time()
     logger.info(f"total time: {end_time - start_time}")
     return target_mp4_f_path

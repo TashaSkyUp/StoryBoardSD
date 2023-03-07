@@ -1122,16 +1122,22 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
     return all_state, target_mp4_f_path
 
 
-def compose_file_handling(audio_f_path, images_to_save,fps=DefaultRender.fps):
+def compose_file_handling(audio_f_path,
+                          images_to_save,
+                          fps=DefaultRender.fps,
+                          width=DefaultRender.width,
+                          height=DefaultRender.height):
     working_dir = os.path.join(STORYBOARD_RENDER_PATH, "tmp")
     print(f'working_dir: {working_dir}')
     print(f'audio_f_path: {audio_f_path}')
+
     video_f_path = make_mp4_from_images(
         images_to_save,
         working_dir,
-        "video.mp4", 512, 512, False,
+        "video.mp4", width, height, False,
         fps=fps,
         filter_func=lambda x: limit_per_pixel_change_slice(x, .5))
+
     print(f'video_f_path: {video_f_path}')
     complete_mp4_f_path = join_video_audio(video_f_path, audio_f_path)
     target_mp4_f_path = os.path.join(STORYBOARD_RENDER_PATH,
