@@ -261,6 +261,12 @@ class StoryBoardPrompt:
     ... except Exception as e:
     ...     print(e)
     '(dog:1.00000000)(cat:1.00000000)'
+    >>> try:
+    ...     SB = StoryBoardPrompt("doctests", [.5,.5])
+    ...     SB([0.5])
+    ... except Exception as e:
+    ...     print(e)
+    ['(dog:1.00000000)(cat:1.00000000)']
     """
 
     def __init__(self, prompts: List[str] or str, seconds_lengths: List[float], use_only_nouns=False):
