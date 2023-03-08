@@ -227,7 +227,7 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
         # render the batch
         if len(target_times) > 0:
             imgs = rend_func(target_times).all_images
-            imgs = imgs[1:] or [imgs[0]]
+            imgs = imgs[-len(target_times):] or [imgs[0]]
             pairs_done_this_iter = pairs_to_gen
             del pairs_to_gen
 
