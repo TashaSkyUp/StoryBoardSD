@@ -34,6 +34,7 @@ class DefaultRender:
     batch_count: int = 1
     batch_size: int = MAX_BATCH_SIZE
     sampler_index: int = 8  # 9
+    sampler_name: str = "DPM2 Karras"
 
 
 @dataclass
@@ -45,6 +46,7 @@ class SBIRenderParams:
     batch_count: int = 1
     batch_size: int = MAX_BATCH_SIZE
     sampler_index: int = 8  # 9
+    sampler_name: str = "DPM2 Karras"
 
 
 def quick_timer(func, *args, **kwargs):
@@ -885,10 +887,10 @@ class SBMultiSampleArgs:
         return my_iter
 
     def __len__(self):
-        return self._length
+        return self.hyper.prompt.__len__()
 
     def __getitem__(self, item):
-        tmp = SBMultiSampleArgs(render=self._render, hyper=self._hyper[item])
+        tmp = SBMultiSampleArgs(render=self._render, hyper=self._hyper[0][item])
         return tmp
 
 
@@ -920,8 +922,7 @@ class SBImageResults:
         self.width = processed.width
         self.job_timestamp = processed.job_timestamp
         self.negative_prompt = processed.negative_prompt
-        self.sampler_index = processed.sampler_index
-        self.sampler_name = processed.sampler
+        self.sampler_name = processed.sampler_name
         self.steps = processed.steps
         self.sb_iparams: SBMultiSampleArgs = self.sb_multi_sample_args_from_sd_results()
 
@@ -957,7 +958,7 @@ class SBImageResults:
                                                            # batch_count=processed.,batch_count
                                                            batch_count=None,
                                                            batch_size=processed.batch_size,
-                                                           sampler_index=processed.sampler_index)
+                                                           sampler_name=processed.sampler_name)
                                            for _ in range(processed.batch_size)]
 
         self.all_as_stb_image_params = [SBMultiSampleArgs(hyper=hyper,
@@ -1009,7 +1010,7 @@ class SBImageResults:
                                    # TODO: check if the Processed class is just for one batch always
                                    batch_count=1,
                                    batch_size=processed.batch_size,
-                                   sampler_index=processed.sampler_index)
+                                   sampler_name=processed.sampler_name)
 
         t_params = SBMultiSampleArgs(hyper=t_hyp, render=t_render)
 

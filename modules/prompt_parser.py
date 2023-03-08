@@ -448,9 +448,7 @@ def get_multicond_learned_conditioning(model, prompts: tuple, steps, debug=False
     """
     # prompts=list(prompts)
     res_indexes, prompt_flat_list, prompt_indexes = get_multicond_prompt_list(prompts)
-    ttt=time.time()
     learned_conditioning = get_learned_conditioning(model, tuple(prompt_flat_list), steps)
-    print(f"get_learned_conditioning took {time.time()-ttt:.2f} seconds")
     res = []
 
     if debug: print(f'starting inner loop for get_multicond')

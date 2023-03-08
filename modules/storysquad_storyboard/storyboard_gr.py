@@ -586,6 +586,7 @@ class StoryBoardGradio:
                 batch_count=1,
                 restore_faces=ui_param_state[6],
                 sampler_index=ui_param_state[3],
+                sampler_name=DefaultRender.sampler_name,
             )
         )
         return sb_image
@@ -733,7 +734,7 @@ class StoryBoardGradio:
                         gr.Slider(minimum=1.0, maximum=30.0, step=0.5, label='CFG Scale', value=7.0))
                     self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
                     # seed, reuse_seed, subseed, reuse_subseed, subseed_strength, seed_resize_from_h, seed_resize_from_w, seed_checkbox
-                    self.ordered_list_of_param_inputs.append(self.create_seed_inputs())
+                    self.ordered_list_of_param_inputs.append(self.create_seed_inputs("storyboard"))
 
                     self.all_components["param_inputs"]["seed"], \
                     self.all_components["param_inputs"]["reuse_seed"], \

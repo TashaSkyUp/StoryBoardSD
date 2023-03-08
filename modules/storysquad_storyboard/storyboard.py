@@ -71,9 +71,10 @@ class SBIHyperParams:
         self.cfg_scale = self._make_list(cfg_scale)
 
     def __getitem__(self, item):
-        return SBIHyperParams(prompt=self._prompt[item], negative_prompt=self.negative_prompt[item],
+        ret = SBIHyperParams(prompt=self._prompt[item], negative_prompt=self.negative_prompt[item],
                               steps=self.steps[item], seed=self.seed[item], subseed=self.subseed[item],
                               subseed_strength=self.subseed_strength[item], cfg_scale=self.cfg_scale[item])
+        return ret
 
     def _make_list(self, item: object) -> [object]:
         if isinstance(item, list):

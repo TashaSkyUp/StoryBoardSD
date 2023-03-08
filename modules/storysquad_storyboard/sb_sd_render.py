@@ -8,6 +8,8 @@ from .sb_rendering import SBMultiSampleArgs, SBImageResults
 
 def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleArgs):
     # convert the story board params to StableDiffusionProcessingTxt2Img params
+    if not isinstance(sb_iparams,SBMultiSampleArgs):
+        raise TypeError(f"sb_iparams must be of type SBMultiSampleArgs, but is {type(sb_iparams)}")
 
     # get the hyper params
     prompt = sb_iparams.hyper.prompt
@@ -26,7 +28,16 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
     tiling = sb_iparams.render.tiling
     batch_count = sb_iparams.render.batch_count
     batch_size = sb_iparams.render.batch_size
+
+    if isinstance(prompt,list):
+        if batch_size > len(prompt):
+            batch_size = len(prompt)
+    else:
+            batch_size = 1
+
+
     sampler_index = sb_iparams.render.sampler_index
+    sampler_name = sb_iparams.render.sampler_name
 
     # convert the render params to the StableDiffusionProcessingTxt2Img params
 
@@ -40,7 +51,7 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
         seed=seed,
         subseed=subseed,
         subseed_strength=subseed_strength,  # if type(subseed_strength) is not list else subseed_strength[0],
-        sampler_index=sampler_index if type(sampler_index) is not list else sampler_index[0],
+        sampler_name=sampler_name if type(sampler_name) is not list else sampler_name[0],
         batch_size=batch_size if type(batch_size) is not list else batch_size[0],
         n_iter=1,
         steps=steps if type(steps) is not list else steps[0],
@@ -56,6 +67,8 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
     return tmp
 
 
+
+
 def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImageResults:
     p = get_sd_txt_2_image_params_from_story_board_params(params)
 
@@ -66,7 +79,21 @@ def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImage
         if p.seed[i] == -1:
             p.seed[i] = modules.processing.get_fixed_seed(-1)
     p.do_not_save_samples=True
-    processed = process_images(p)
+
+    try:
+        processed = process_images(p)
+    except Exception as e:
+        print(e)
+        # try to process each prompt separately
+        results = []
+        for i in range(len(params.combined.hyper.prompt)):
+            try:
+                sbim=params[i]
+                p = get_sd_txt_2_image_params_from_story_board_params(sbim)
+                results.append(process_images(p))
+            except Exception as e:
+                print(e)
+                results.append(None)
 
     shared.total_tqdm.clear()
 

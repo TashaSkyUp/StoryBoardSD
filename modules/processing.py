@@ -583,7 +583,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             return cache[1]
 
         with devices.autocast():
-            cache[1] = function(shared.sd_model, required_prompts, steps)
+            cache[1] = function(shared.sd_model, tuple(required_prompts), steps)
 
         cache[0] = (required_prompts, steps)
         return cache[1]
@@ -600,7 +600,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             state.job_count = p.n_iter
 
         for iter_num in range(p.n_iter):
-            p.iteration = n
+            p.iteration = iter_num
             if state.skipped:
                 state.skipped = False
 
@@ -608,7 +608,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 break
 
             prompts = p.all_prompts[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
-            negative_prompts = p.all_negative_prompts[n * p.batch_size:(n + 1) * p.batch_size]
+            negative_prompts = p.all_negative_prompts[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
             seeds = p.all_seeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
             subseeds = p.all_subseeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
 
@@ -622,19 +622,22 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                     extra_networks.activate(p, extra_network_data)
 
             if p.scripts is not None:
-                p.scripts.process_batch(p, batch_number=n, prompts=prompts, seeds=seeds, subseeds=subseeds)
+                p.scripts.process_batch(p, batch_number=iter_num, prompts=prompts, seeds=seeds, subseeds=subseeds)
 
             # params.txt should be saved after scripts.process_batch, since the
             # infotext could be modified by that callback
             # Example: a wildcard processed by process_batch sets an extra model
             # strength, which is saved as "Model Strength: 1.0" in the infotext
-            if n == 0:
+            if iter_num == 0:
                 with open(os.path.join(paths.data_path, "params.txt"), "w", encoding="utf8") as file:
                     processed = Processed(p, [], p.seed, "")
                     file.write(processed.infotext(p, 0))
 
+            conds_time_start = time.time()
             uc = get_conds_with_caching(prompt_parser.get_learned_conditioning, negative_prompts, p.steps, cached_uc)
             c = get_conds_with_caching(prompt_parser.get_multicond_learned_conditioning, prompts, p.steps, cached_c)
+            conds_time_end = time.time()
+            print(f"uc/c conds_time: {conds_time_end - conds_time_start}")
 
             if len(model_hijack.comments) > 0:
                 for comment in model_hijack.comments:
@@ -661,7 +664,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             devices.torch_gc()
 
             if p.scripts is not None:
-                p.scripts.postprocess_batch(p, x_samples_ddim, batch_number=n)
+                p.scripts.postprocess_batch(p, x_samples_ddim, batch_number=iter_num)
 
             for i, x_sample in enumerate(x_samples_ddim):
                 x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
