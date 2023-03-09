@@ -383,13 +383,26 @@ class StoryBoardPrompt:
         >>> try:
         ...     SB = StoryBoardPrompt("doctests", [0.5, 0.5])
         ...     SB._get_word_weight_at_percent(SB._sections[0], 0, 0.5)
+        ...     #print(SB._get_word_weight_at_percent(SB._sections[0], 0, 0.5))
         ... except Exception as e:
         ...     print(e)
         1.0
         """
+        # Extract the start and end weights for the given word in the given section
         start_weight = section[0][word_index][1]
         end_weight = section[1][word_index][1]
-        return start_weight + percent * (end_weight - start_weight)
+
+        frequency = .333 # 0.1...10 determines how quickly the weights oscillate between the start and end values
+        amplitude = .777 # 0.1...1 determines the strength of the oscillations
+
+        # Compute the transition weight as a linear interpolation between the start and end weights
+        transition_weight = start_weight + percent * (end_weight - start_weight)
+
+        # Compute the sinusoidal weights and return the sum of the transition weight
+        sinusoidal_weight = amplitude * np.sin(2 * np.pi * frequency * percent)
+        # print (sinusoidal_weight)
+        # Return the sum of the transition weight and the sinusoidal weight unless it exceeds 1.0
+        return min(transition_weight - sinusoidal_weight, 1.0)
 
     @staticmethod
     def _get_frame_values_for_prompt_word_weights(sections,
