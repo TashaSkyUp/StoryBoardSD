@@ -401,7 +401,7 @@ class StoryBoardPrompt:
         # Compute the sinusoidal weights and return the sum of the transition weight
         sinusoidal_weight = amplitude * np.sin(2 * np.pi * frequency * percent)
         # print (sinusoidal_weight)
-        # Return the sum of the transition weight and the sinusoidal weight unless it exceeds 1.0
+        # Return the difference of the transition weight and the sinusoidal weight unless it exceeds 1.0
         return min(transition_weight - sinusoidal_weight, 1.0)
 
     @staticmethod
