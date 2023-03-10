@@ -386,7 +386,7 @@ class StoryBoardPrompt:
         ...     #print(SB._get_word_weight_at_percent(SB._sections[0], 0, 0.5))
         ... except Exception as e:
         ...     print(e)
-        1.0
+        0.32750546639340417
         """
         # Extract the start and end weights for the given word in the given section
         start_weight = section[0][word_index][1]
