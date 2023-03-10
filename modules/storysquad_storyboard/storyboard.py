@@ -392,15 +392,16 @@ class StoryBoardPrompt:
         start_weight = section[0][word_index][1]
         end_weight = section[1][word_index][1]
 
+        #Constants for now, if time allows we can make these equations.
         frequency = .333 # 0.1...10 determines how quickly the weights oscillate between the start and end values
         amplitude = .777 # 0.1...1 determines the strength of the oscillations
 
         # Compute the transition weight as a linear interpolation between the start and end weights
         transition_weight = start_weight + percent * (end_weight - start_weight)
 
-        # Compute the sinusoidal weights and return the sum of the transition weight
+        # Compute the sinusoidal weights
         sinusoidal_weight = amplitude * np.sin(2 * np.pi * frequency * percent)
-        # print (sinusoidal_weight)
+
         # Return the difference of the transition weight and the sinusoidal weight unless it exceeds 1.0
         return min(transition_weight - sinusoidal_weight, 1.0)
 
