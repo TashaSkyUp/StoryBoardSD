@@ -189,7 +189,13 @@ class StoryBoardGradio:
         from modules.ui import setup_progressbar, create_seed_inputs
 
         # import custom sampler caller and assign it to be easy to access
-        from .sb_sd_render import storyboard_call_endpoint as storyboardtmp
+        #from .sb_sd_render import storyboard_call_endpoint as storyboardtmp
+        if STORYBOARD_API_ROLE == "ui_only":
+            from .sb_sd_render import storyboard_call_endpoint as storyboardtmp
+        elif STORYBOARD_API_ROLE == "app":
+            from .sb_sd_render import storyboard_call_multi as storyboardtmp
+        elif STORYBOARD_API_ROLE == "sd_server":
+            pass
         self.storyboard = storyboardtmp
 
         # assign imported functionality to be easy to access
@@ -453,7 +459,7 @@ class StoryBoardGradio:
                                                                    test,
                                                                    test_render,
                                                                    ui_params,
-                                                                   SBIMA_render_func=storyboard_call_endpoint,
+                                                                   SBIMA_render_func=self.storyboard,
                                                                    base_SBIMulti=self.get_sb_multi_sample_params_from_ui(ui_params)
                                                                    )
         return [all_state,complete_mp4_f_path]

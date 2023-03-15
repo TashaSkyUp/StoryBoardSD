@@ -6,6 +6,16 @@ def get_this_files_path():
     return os.path.dirname(os.path.realpath(__file__))
 
 
+STORYBOARD_API_MODEL_PATH = os.getenv("STORYBOARD_API_MODEL_PATH", "model.ckpt")
+STORYBOARD_RENDER_SERVER_URLS = \
+    os.getenv("STORYBOARD_RENDER_SERVER_URLS",
+              ["http://127.0.0.1:7861/sdapi/v1/txt2img",
+               "http://127.0.0.1:7862/sdapi/v1/txt2img"])
+
+STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "app")
+# STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "sd_server")
+# STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "ui_only")
+
 STORYBOARD_DEV_MODE = os.getenv("STORYBOARD_DEV_MODE") == "True"
 STORYBOARD_RENDER_PATH = os.getenv("STORYBOARD_RENDER_PATH", get_this_files_path())
 if STORYBOARD_RENDER_PATH:
