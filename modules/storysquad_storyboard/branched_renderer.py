@@ -50,7 +50,7 @@ def do_testing(my_ren_p, storyboard_params, ui_params, render_func, test=-10):
     sb_seeds_list = [1, 2, 3]
     ui_params = list(ui_params)
     ui_params[1] = negative_prompt
-    ui_params[2] = 12  # steps
+    ui_params[2] = 5  # steps
 
     sb_prompt = StoryBoardPrompt(sb_prompts, my_ren_p.seconds, False)
     sb_seeds = StoryBoardSeed(sb_seeds_list,
@@ -73,8 +73,15 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
     :param sb_rend_func: the render function to use for rendering the SBMultiSampleArgs
     :param test: if true, then the function will perform a quick test render
     :param early_stop: if not -1, then the function will stop after this many seconds
+
+    Doctest not working due to import issues
+
     >>> test_ui_params = ["test","nude",7,3,4,5,6,7,8,9,10,11,12,7.5]
-    >>> compose_storyboard_render_dev(DefaultRender(),None,test_ui_params ,lambda x: random.random() ,test=True)
+    >>> import importlib
+    >>> importlib.
+    >>> from modules.storysquad_storyboard.sb_sd_render import storyboard_call_endpoint
+    >>> compose_storyboard_render_dev(DefaultRender(),None,test_ui_params ,storyboard_call_endpoint ,test=True)
+    >>>
     """
     start_time = time.time()
     my_ren_p.width = ui_params[4]
@@ -118,9 +125,8 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
     return target_mp4_f_path
 
 
-#def renderer(minimum_via_diff, num_frames, num_keyframes, rend_func, sb_prompt, seconds_length):
-def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_func: callable, sb_prompt: str,
-                 seconds_length: float) -> [Image]:
+def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_func: callable,
+             sb_prompt: StoryBoardPrompt,seconds_length: float) -> [Image]:
     """
     Renders a sequence of images using the given rendering function.
 
@@ -290,7 +296,8 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
             elif frame_type == "i":
                 i_frames_needed = round(diff_orig / 3) + 1  # this is a constant I came to by trail and error
                 i_frames_needed = min(i_frames_needed, 1)
-                # the above actually needs to be changed because the difference score is now from 0 to 1 instead of 0 to 255
+                # the above actually needs to be changed because the difference score is now from 0 to 1 instead of 0
+                # to 255 and is no longer linear
 
                 logger.info(f'adding {i_frames_needed} -{frame_type}'
                              f'- (interpolation) frames between {src_pair[0]} and {src_pair[1]}')
