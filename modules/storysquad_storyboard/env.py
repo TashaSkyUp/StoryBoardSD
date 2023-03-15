@@ -14,7 +14,7 @@ if STORYBOARD_RENDER_PATH:
 STORYBOARD_FFMPEG_PATH = os.getenv("STORYBOARD_FFMPEG_PATH", "ERROR")
 if STORYBOARD_FFMPEG_PATH == "ERROR":
     try:
-        fallback =get_ffmpeg_exe()
+        fallback = get_ffmpeg_exe()
         print(f'fallback: {fallback}')
         STORYBOARD_FFMPEG_PATH = fallback
     except:

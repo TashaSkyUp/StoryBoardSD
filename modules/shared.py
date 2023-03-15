@@ -22,6 +22,11 @@ demo = None
 sd_configs_path = os.path.join(script_path, "configs")
 sd_default_config = os.path.join(sd_configs_path, "v1-inference.yaml")
 sd_model_file = os.path.join(script_path, 'model.ckpt')
+
+from modules.storysquad_storyboard.env import STORYBOARD_API_MODEL_PATH
+sd_model_file = STORYBOARD_API_MODEL_PATH
+
+
 default_sd_model_file = sd_model_file
 
 parser = argparse.ArgumentParser()

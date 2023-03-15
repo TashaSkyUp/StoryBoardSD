@@ -99,13 +99,50 @@ class StableDiffusionProcessing:
     """
     The first set of paramaters: sd_models -> do_not_reload_embeddings represent the minimum required to create a StableDiffusionProcessing
     """
-    def __init__(self, sd_model=None, outpath_samples=None, outpath_grids=None, prompt: str = "", styles: List[str] = None, seed: int = -1, subseed: int = -1, subseed_strength: float = 0, seed_resize_from_h: int = -1, seed_resize_from_w: int = -1, seed_enable_extras: bool = True, sampler_name: str = None, batch_size: int = 1, n_iter: int = 1, steps: int = 50, cfg_scale: float = 7.0, width: int = 512, height: int = 512, restore_faces: bool = False, tiling: bool = False, do_not_save_samples: bool = False, do_not_save_grid: bool = False, extra_generation_params: Dict[Any, Any] = None, overlay_images: Any = None, negative_prompt: str = None, eta: float = None, do_not_reload_embeddings: bool = False, denoising_strength: float = 0, ddim_discretize: str = None, s_churn: float = 0.0, s_tmax: float = None, s_tmin: float = 0.0, s_noise: float = 1.0, override_settings: Dict[str, Any] = None, override_settings_restore_afterwards: bool = True, sampler_index: int = None, script_args: list = None):
+    def __init__(self,
+                 sd_model=None,
+                 outpath_samples=None,
+                 outpath_grids=None,
+                 prompt: List[str] = [""],
+                 styles: List[str] = None,
+                 seed: List[int] = -1,
+                 subseed: List[int] = -1,
+                 subseed_strength: List[float] = 0,
+                 seed_resize_from_h: int = -1,
+                 seed_resize_from_w: int = -1,
+                 seed_enable_extras: bool = True,
+                 sampler_name: str = None,
+                 batch_size: int = 1,
+                 n_iter: int = 1,
+                 steps: int = 50,
+                 cfg_scale: float = 7.0,
+                 width: int = 512,
+                 height: int = 512,
+                 restore_faces: bool = False,
+                 tiling: bool = False,
+                 do_not_save_samples: bool = False,
+                 do_not_save_grid: bool = False,
+                 extra_generation_params: Dict[Any, Any] = None,
+                 overlay_images: Any = None,
+                 negative_prompt: str = None,
+                 eta: float = None,
+                 do_not_reload_embeddings: bool = False,
+                 denoising_strength: float = 0,
+                 ddim_discretize: str = None,
+                 s_churn: float = 0.0,
+                 s_tmax: float = None,
+                 s_tmin: float = 0.0,
+                 s_noise: float = 1.0,
+                 override_settings: Dict[str, Any] = None,
+                 override_settings_restore_afterwards: bool = True,
+                 sampler_index: int = None,
+                 script_args: list = None):
         if sampler_index is not None:
             print("sampler_index argument for StableDiffusionProcessing does not do anything; use sampler_name", file=sys.stderr)
 
         self.outpath_samples: str = outpath_samples
         self.outpath_grids: str = outpath_grids
-        self.prompt: str = prompt
+        self.prompt: list[str] = prompt
         self.prompt_for_display: str = None
         self.negative_prompt: str = (negative_prompt or "")
         self.styles: list = styles or []
@@ -754,7 +791,16 @@ def old_hires_fix_first_pass_dimensions(width, height):
 class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
     sampler = None
 
-    def __init__(self, enable_hr: bool = False, denoising_strength: float = 0.75, firstphase_width: int = 0, firstphase_height: int = 0, hr_scale: float = 2.0, hr_upscaler: str = None, hr_second_pass_steps: int = 0, hr_resize_x: int = 0, hr_resize_y: int = 0, **kwargs):
+    def __init__(self, enable_hr: bool = False,
+                 denoising_strength: float = 0.75,
+                 firstphase_width: int = 0,
+                 firstphase_height: int = 0,
+                 hr_scale: float = 2.0,
+                 hr_upscaler: str = None,
+                 hr_second_pass_steps: int = 0,
+                 hr_resize_x: int = 0,
+                 hr_resize_y: int = 0,
+                 **kwargs):
         super().__init__(**kwargs)
         self.enable_hr = enable_hr
         self.denoising_strength = denoising_strength

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import List, Any
 
 DEV_MODE = os.getenv("STORYBOARD_DEV_MODE", "False") == "True"
-DEFAULT_HYPER_PARAMS = {
+DEFAULT_HYPER_PARAMS_DICT = {
     "prompt": "",
     "negative_prompt": "",
     "steps": 8,
@@ -19,21 +19,21 @@ DEFAULT_HYPER_PARAMS = {
 
 @dataclass
 class DEFAULT_HYPER_PARAMS:
-    prompt: str = DEFAULT_HYPER_PARAMS["prompt"]
-    negative_prompt: str = DEFAULT_HYPER_PARAMS["negative_prompt"]
-    steps: int = DEFAULT_HYPER_PARAMS["steps"]
-    seed: int = DEFAULT_HYPER_PARAMS["seed"]
-    subseed: int = DEFAULT_HYPER_PARAMS["subseed"]
-    subseed_strength: int = DEFAULT_HYPER_PARAMS["subseed_strength"]
-    cfg_scale: int = DEFAULT_HYPER_PARAMS["cfg_scale"]
+    prompt: str = DEFAULT_HYPER_PARAMS_DICT["prompt"]
+    negative_prompt: str = DEFAULT_HYPER_PARAMS_DICT["negative_prompt"]
+    steps: int = DEFAULT_HYPER_PARAMS_DICT["steps"]
+    seed: int = DEFAULT_HYPER_PARAMS_DICT["seed"]
+    subseed: int = DEFAULT_HYPER_PARAMS_DICT["subseed"]
+    subseed_strength: int = DEFAULT_HYPER_PARAMS_DICT["subseed_strength"]
+    cfg_scale: int = DEFAULT_HYPER_PARAMS_DICT["cfg_scale"]
 
 
 DEV_HYPER_PARAMS = DEFAULT_HYPER_PARAMS(steps=1)
 
 if DEV_MODE:
-    DEFAULT_HYPER_PARAMS = DEV_HYPER_PARAMS
+    DEFAULT_HYPER_PARAMS_DICT = DEV_HYPER_PARAMS
 else:
-    DEFAULT_HYPER_PARAMS = DEV_HYPER_PARAMS
+    DEFAULT_HYPER_PARAMS_DICT = DEV_HYPER_PARAMS
 
 
 class SBIHyperParams:
@@ -41,13 +41,23 @@ class SBIHyperParams:
     the idea with this class is to provide a useful interface for the user to set,add,index the hyper parameters
     """
 
-    def __init__(self, negative_prompt=DEFAULT_HYPER_PARAMS.negative_prompt,
-                 steps=DEFAULT_HYPER_PARAMS.steps,
-                 seed=DEFAULT_HYPER_PARAMS.seed,
-                 subseed=DEFAULT_HYPER_PARAMS.subseed,
-                 subseed_strength=DEFAULT_HYPER_PARAMS.subseed_strength,
-                 cfg_scale=DEFAULT_HYPER_PARAMS.cfg_scale,
-                 prompt=DEFAULT_HYPER_PARAMS.prompt,
+    # def __init__(self, negative_prompt=DEFAULT_HYPER_PARAMS_DICT.negative_prompt,
+    #             steps=DEFAULT_HYPER_PARAMS_DICT.steps,
+    #             seed=DEFAULT_HYPER_PARAMS_DICT.seed,
+    #             subseed=DEFAULT_HYPER_PARAMS_DICT.subseed,
+    #             subseed_strength=DEFAULT_HYPER_PARAMS_DICT.subseed_strength,
+    #             cfg_scale=DEFAULT_HYPER_PARAMS_DICT.cfg_scale,
+    #             prompt=DEFAULT_HYPER_PARAMS_DICT.prompt,
+    #             **kwargs):
+
+    def __init__(self,
+                 negative_prompt=[],
+                 steps=[],
+                 seed=[],
+                 subseed=[],
+                 subseed_strength=[],
+                 cfg_scale=[],
+                 prompt=[],
                  **kwargs):
         # this just ensures that all the params are lists
 
@@ -72,8 +82,8 @@ class SBIHyperParams:
 
     def __getitem__(self, item):
         ret = SBIHyperParams(prompt=self._prompt[item], negative_prompt=self.negative_prompt[item],
-                              steps=self.steps[item], seed=self.seed[item], subseed=self.subseed[item],
-                              subseed_strength=self.subseed_strength[item], cfg_scale=self.cfg_scale[item])
+                             steps=self.steps[item], seed=self.seed[item], subseed=self.subseed[item],
+                             subseed_strength=self.subseed_strength[item], cfg_scale=self.cfg_scale[item])
         return ret
 
     def _make_list(self, item: object) -> [object]:
@@ -113,6 +123,9 @@ class SBIHyperParams:
 
     def __str__(self):
         return self.__json__()
+
+    def __len__(self):
+        return len(self._prompt)
 
 
 def get_frame_seed_data(board_params, _num_frames) -> [()]:  # List[(seed,subseed,weight)]
@@ -168,7 +181,7 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
             w = 1.0
         # if the length of the item that is possibly a word weight pair is 2 then it is a word and a weight
         elif value_count == 2:  # then there is a word and probably a weight in the tuple
-            if len(word_weight_pair[1]) == 0: # weight is empty
+            if len(word_weight_pair[1]) == 0:  # weight is empty
                 w = 1.0
             else:
                 # if the second item in the word weight pair is a float then it is a weight
@@ -184,9 +197,11 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
         out.append((word_weight_pair[0], w))
     return out
 
+
 def get_prompt_words_list(prompt):
     out = [i[0] for i in get_prompt_words_and_weights_list(prompt)]
     return out
+
 
 def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
     """
@@ -213,6 +228,7 @@ def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
         for word_weight_pair in possible_word_weight_pairs
         if word_weight_pair[0] != ""
     ]
+
 
 def sanitize_prompt(prompt):
     prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
@@ -474,7 +490,7 @@ class StoryBoardPrompt:
                 break
 
         section_start_time = self._times_sections_start[section_second_is_in]
-        section_end_time = self._times_sections_start[section_second_is_in]+self.seconds_lengths[section_second_is_in]
+        section_end_time = self._times_sections_start[section_second_is_in] + self.seconds_lengths[section_second_is_in]
         section_length = section_end_time - section_start_time
         section_percent = (seconds - section_start_time) / section_length
 
@@ -497,13 +513,12 @@ class StoryBoardPrompt:
         out = [sp for sp in p if sp[0] in self.noun_list]
         return out
 
+
 class StoryBoardSeed():
 
-    def __init__(self, seeds:[int], times:[int]):
+    def __init__(self, seeds: [int], times: [int]):
         self.seeds = seeds
         self.times = times
-
-
 
     def get_seed_at_time(self, seconds):
         """
@@ -521,19 +536,20 @@ class StoryBoardSeed():
 
         """
         times = self.times
-        times= [0]+times
-        seeds= self.seeds
+        times = [0] + times
+        seeds = self.seeds
         import numpy as np
         if seconds < times[0]:
             raise ValueError("seconds cannot be less than the start time of the storyboard")
         if seconds > times[-1]:
             raise ValueError("seconds cannot be greater than the end time of the storyboard")
-        index = np.searchsorted(times, seconds)-1
-        index = max(index,0)
-        total_time_in_section = times[index] - times[index+1]
+        index = np.searchsorted(times, seconds) - 1
+        index = max(index, 0)
+        total_time_in_section = times[index] - times[index + 1]
         time_into_section = seconds - times[index]
         percent_into_section = time_into_section / total_time_in_section
-        return seeds[index], seeds[index+1], abs(percent_into_section)
+        return seeds[index], seeds[index + 1], abs(percent_into_section)
+
     def get_seeds_at_times(self, seconds_list):
         """
         >>> times = [4,8,16]
@@ -549,18 +565,22 @@ class StoryBoardSeed():
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s) for s in seconds_list]
+
     def get_prime_seeds_at_times(self, seconds_list):
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s)[0] for s in seconds_list]
+
     def get_subseeds_at_times(self, seconds_list):
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s)[1] for s in seconds_list]
+
     def get_subseed_strength_at_times(self, seconds_list):
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s)[2] for s in seconds_list]
+
 
 class StoryBoardData:
     def __init__(self, storyboard_prompt: StoryBoardPrompt, storyboard_seed: StoryBoardSeed):
@@ -568,10 +588,10 @@ class StoryBoardData:
         self.storyboard_seed = storyboard_seed
 
 
-
 if __name__ == "__main__":
     import modules.paths
     import doctest
+
     print(StoryBoardPrompt(
         [
             "super:1 hero:1 cat:0.0",
@@ -602,4 +622,3 @@ if __name__ == "__main__":
     movie_seconds_per_frame = 1 / movies_fps
     movie_frames = [SBP(i * movie_seconds_per_frame) for i in range(movie_length_in_frames)]
     print(movie_frames, len(movie_frames))
-

@@ -25,7 +25,7 @@ class BenchMarkSettings:
 
 
 if __name__ != "__main__" and __name__ != "storyboard_gr":
-    from modules.storysquad_storyboard.storyboard import DEFAULT_HYPER_PARAMS
+    from modules.storysquad_storyboard.storyboard import DEFAULT_HYPER_PARAMS_DICT
     from modules.storysquad_storyboard.sb_sd_render import *
     import modules.storysquad_storyboard.env as sb_env
 
@@ -189,7 +189,7 @@ class StoryBoardGradio:
         from modules.ui import setup_progressbar, create_seed_inputs
 
         # import custom sampler caller and assign it to be easy to access
-        from .sb_sd_render import storyboard_call_multi as storyboardtmp
+        from .sb_sd_render import storyboard_call_endpoint as storyboardtmp
         self.storyboard = storyboardtmp
 
         # assign imported functionality to be easy to access
@@ -453,7 +453,7 @@ class StoryBoardGradio:
                                                                    test,
                                                                    test_render,
                                                                    ui_params,
-                                                                   SBIMA_render_func=storyboard_call_multi,
+                                                                   SBIMA_render_func=storyboard_call_endpoint,
                                                                    base_SBIMulti=self.get_sb_multi_sample_params_from_ui(ui_params)
                                                                    )
         return [all_state,complete_mp4_f_path]
@@ -749,19 +749,19 @@ class StoryBoardGradio:
                     self.ordered_list_of_param_inputs.append(
                         gr.Slider(minimum=4.0, maximum=10.0, step=0.1, label='Configuration Scale', value=7.0))
                     self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
-                    self.all_components["param_inputs"]["seed"] = gr.State(DEFAULT_HYPER_PARAMS.seed)
-                    self.all_components["param_inputs"]["subseed"] = gr.State(DEFAULT_HYPER_PARAMS.subseed)
+                    self.all_components["param_inputs"]["seed"] = gr.State(DEFAULT_HYPER_PARAMS_DICT.seed)
+                    self.all_components["param_inputs"]["subseed"] = gr.State(DEFAULT_HYPER_PARAMS_DICT.subseed)
                     self.all_components["param_inputs"]["subseed_strength"]= gr.State(
-                        DEFAULT_HYPER_PARAMS.subseed_strength)
+                        DEFAULT_HYPER_PARAMS_DICT.subseed_strength)
 
                 elif sb_env.STORYBOARD_PRODUCT == "clash":
                     self.ordered_list_of_param_inputs.append(
                         gr.State(7.0))
                     self.all_components["param_inputs"]["cfg_scale"] = self.ordered_list_of_param_inputs[-1]
-                    self.all_components["param_inputs"]["seed"] = gr.State(DEFAULT_HYPER_PARAMS.seed)
-                    self.all_components["param_inputs"]["subseed"] = gr.State(DEFAULT_HYPER_PARAMS.subseed)
+                    self.all_components["param_inputs"]["seed"] = gr.State(DEFAULT_HYPER_PARAMS_DICT.seed)
+                    self.all_components["param_inputs"]["subseed"] = gr.State(DEFAULT_HYPER_PARAMS_DICT.subseed)
                     self.all_components["param_inputs"]["subseed_strength"] = gr.State(
-                        DEFAULT_HYPER_PARAMS.subseed_strength)
+                        DEFAULT_HYPER_PARAMS_DICT.subseed_strength)
 
         with gr.Blocks() as story_squad_interface:
             self.comp_helper.story_squad_interface = story_squad_interface
