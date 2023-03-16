@@ -2,6 +2,7 @@ import json
 import numpy as np
 import os
 import numbers
+import random
 from dataclasses import dataclass
 from typing import List, Any
 
@@ -385,23 +386,22 @@ class StoryBoardPrompt:
         ...     SB._get_word_weight_at_percent(SB._sections[0], 0, 0.5)
         ... except Exception as e:
         ...     print(e)
-        0.32750546639340417
+        0.7938926261462366
         """
         start_weight = section[0][word_index][1]
         end_weight = section[1][word_index][1]
 
         #Constants for now, if time allows we can make these equations.
-        frequency = 10 # .333 0.1...10 determines how quickly the weights oscillate between the start and end values
-        amplitude = 1 # .777 0.1...1 determines the strength of the oscillations
+        frequency = 0.1 # .333 0.1...10 determines how quickly the weights oscillate between the start and end values
+        amplitude = (random.randint(0, 10))/10 # .777 0.1...1 determines the strength of the oscillations
 
         # Compute the transition weight as a linear interpolation between the start and end weights
-        transition_weight = start_weight + percent * (end_weight - start_weight)
+        linear_weight = start_weight + percent * (end_weight - start_weight)
 
         # Compute the sinusoidal weights y=(sin(X*pi*10*2)+1)/2
-        sinusoidal_weight = amplitude * (np.sin(2 * np.pi * frequency * percent)+1)/2
+        sinusoidal_weight =  (np.sin(2 * np.pi * frequency * amplitude * linear_weight)+1)/2
 
-        # Return the difference of the transition weight and the sinusoidal weight unless it exceeds 1.0
-        return min(transition_weight - sinusoidal_weight, 1.0)
+        return sinusoidal_weight
 
     @staticmethod
     def _get_frame_values_for_prompt_word_weights(sections,
