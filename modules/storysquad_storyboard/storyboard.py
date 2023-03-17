@@ -272,6 +272,29 @@ class StoryBoardPrompt:
 
     this provides a way to render the prompt attribute of a story board at a specified point in time
 
+    seconds_lengths is a list of the lengths of each section of the storyboard in seconds
+    >>> try:
+    ...     SB = StoryBoardPrompt("doctests", [.5,.5])
+    ...     SB_part1 = SB[.25:.75] #.5 seconds sliced out of the middle
+    ...     detailed= f'{SB_part1([0.0])}{SB_part1([0.125])}{SB_part1([0.25+0.125])}{SB_part1([0.5])}'
+    ...     print(detailed)
+    ... except Exception as e:
+    ...     raise e
+    ['(dog:1.00000000)(cat:0.50000000)']['(dog:1.00000000)(cat:0.75000000)']['(dog:0.75000000)(cat:1.00000000)']['(dog:0.50000000)(cat:1.00000000)']
+    >>> try:
+    ...     SB = StoryBoardPrompt("doctests", [.5,.5])
+    ...     SB_part1 = SB[0:.5]
+    ...     SB_part1([0.25])
+    ... except Exception as e:
+    ...     raise e
+    ['(dog:1.00000000)(cat:0.50000000)']
+    >>> try:
+    ...     SB = StoryBoardPrompt("doctests", [.5,.5])
+    ...     SB_part2 = SB[.25:]
+    ...     SB_part2([0.5])
+    ... except Exception as e:
+    ...     raise e
+    ['(dog:0.50000000)(cat:1.00000000)']
     >>> try:
     ...     SB = StoryBoardPrompt("doctests", [.5,.5])
     ...     SB._get_prompt_at_time(0.5)
@@ -331,10 +354,50 @@ class StoryBoardPrompt:
                 return [self._get_prompt_at_time(args[0])]
             elif type(args[0]) is list:
                 return [self._get_prompt_at_time(t) for t in args[0]]
+            elif type(args[0]) is slice:
+                return self._slice(args[0])
             else:
                 raise TypeError("args must be a float or a list of floats")
-        except IndexError:
-            raise TypeError("args must be a float or a list of floats")
+        except IndexError as e:
+            raise e
+
+    def _slice(self,slice: slice):
+        start_time = slice.start
+        stop_time = slice.stop
+        if start_time is None:
+            start_time = 0
+        if stop_time is None:
+            stop_time = 1
+        start_prompt = self(start_time)[0] # this returns a prompt, one of the new helix points
+        stop_prompt = self(stop_time)[0] # this returns a prompt, one of the new helix points
+
+        # check if a helix point is contained between start and stop
+        # if so, then we need to include it in the output StoryBoardPrompt
+        # if not, then we can just return a StoryBoardPrompt with two prompts and one section
+        helix_point_times:[float] = self._times_sections_start
+
+        helix_point_prompts:[str] = [
+            start_prompt,
+        ]
+        new_section_lengths:[float] = []
+        for i in range(len(helix_point_times)):
+            if start_time < helix_point_times[i] < stop_time:
+                helix_point_prompts.append(self._get_prompt_at_time(helix_point_times[i]))
+        helix_point_prompts.append(stop_prompt)
+
+        new_start_section_length = helix_point_times[1] - start_time
+        new_end_section_length = stop_time - helix_point_times[-1]
+
+        if new_end_section_length == 0 or new_start_section_length == 0: num_sections = 1
+        else: num_sections = len(helix_point_prompts)
+
+        if num_sections == 1:
+            new_section_lengths = [stop_time - start_time]
+        else:
+            new_section_lengths = [new_start_section_length] + new_section_lengths + [new_end_section_length]
+        ret = StoryBoardPrompt(helix_point_prompts, new_section_lengths)
+        return ret
+
 
     @staticmethod
     def _sanitize_prompt(prompt):
@@ -354,7 +417,9 @@ class StoryBoardPrompt:
         # compact blankspace
         for i in range(10):
             prompt = prompt.replace("  ", " ")
-
+        # removed for now because it prevents slicing the object
+        # prompt = prompt.replace("(", "").replace(")", "")
+        prompt=prompt.replace(")(", " ")
         prompt = prompt.replace("(", "").replace(")", "")
         return prompt.strip()
 
@@ -391,13 +456,17 @@ class StoryBoardPrompt:
         ... except Exception as e:
         ...     print(e)
         [[[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 1.0)]], [[('dog', 1.0), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]]
+        >>> try:
+        ...     SB = StoryBoardPrompt(["doctests:0","doctest:1"], [0.5])
+        ...     SB._get_sections(SB._words_and_weights)
+        ... except Exception as e:
+        ...     print(e)
+        [[[('doctests', 0.0)], [('doctest', 1.0)]]]
         """
-        sections: List[List[List[Tuple[str, float]]]] = [
-            [words_and_weights_list[0], words_and_weights_list[1]],
-            # transition from lattice pt 1 to 2
-            [words_and_weights_list[1], words_and_weights_list[2]],
-            # transition from lattice pt 2 to 3
-        ]
+        sections: List[List[List[Tuple[str, float]]]] = []
+        for i in range(len(words_and_weights_list) - 1):
+            sections.append([words_and_weights_list[i], words_and_weights_list[i + 1]])
+
         return sections
 
     @staticmethod
@@ -483,11 +552,7 @@ class StoryBoardPrompt:
             raise ValueError("seconds cannot be greater than the total time of the storyboard")
 
         # find the section that the seconds is in using self._times_sections_start
-        section_second_is_in = len(self._times_sections_start) - 1
-        for i, section_start_time in enumerate(self._times_sections_start):
-            if seconds < section_start_time:
-                section_second_is_in = i - 1
-                break
+        section_second_is_in = self._get_section_at_time(seconds)
 
         section_start_time = self._times_sections_start[section_second_is_in]
         section_end_time = self._times_sections_start[section_second_is_in] + self.seconds_lengths[section_second_is_in]
@@ -505,6 +570,14 @@ class StoryBoardPrompt:
                           ])
 
         return "".join([f"({w[0]}:{w[1]:.8f})" for w in prmpt])
+
+    def _get_section_at_time(self, seconds):
+        section_second_is_in = len(self._times_sections_start) - 1
+        for i, section_start_time in enumerate(self._times_sections_start):
+            if seconds < section_start_time:
+                section_second_is_in = i - 1
+                break
+        return section_second_is_in
 
     def __getitem__(self, time_seconds: float) -> str:
         return self(time_seconds)
