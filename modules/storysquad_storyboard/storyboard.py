@@ -5,7 +5,7 @@ import numbers
 import random
 from dataclasses import dataclass
 from typing import List, Any
-
+import matplotlib.pyplot as plt
 DEV_MODE = os.getenv("STORYBOARD_DEV_MODE", "False") == "True"
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
@@ -379,29 +379,39 @@ class StoryBoardPrompt:
         return sections
 
     @staticmethod
+
+    #
+    #     # Compute the sinusoidal weights as a function of linear weight y=(sin(X*pi*10*2)+1)/2 where X== linear weight
+    #     sinusoidal_weight =  (np.sin(2 * np.pi * frequency * amplitude * linear_weight)+1)/2
+    #
+    #     return sinusoidal_weight
+
     def _get_word_weight_at_percent(section, word_index, percent):
         """
-        >>> try:
-        ...     SB = StoryBoardPrompt("doctests", [0.5, 0.5])
-        ...     SB._get_word_weight_at_percent(SB._sections[0], 0, 0.5)
-        ... except Exception as e:
-        ...     print(e)
-        0.7938926261462366
+        Calculate the weight of a word based on its section traversal progress.
+
+        :param section: list of two tuples containing the weight values of a word at the beginning and end of a section
+        :param word_index: integer representing the index of the word whose weight is being calculated
+        :param percent: float representing the percentage of the section that has been traversed
+        :return: float representing the weight of the word
+
+        >>> test_obj = StoryBoardPrompt("doctests", [.5,.5])
+        >>> percent_values = np.linspace(0, 1, 100)
+        >>> weights = [[test_obj._get_word_weight_at_percent(test_obj._sections[0], word_index=i, percent=p) for p in percent_values] for i in range(2)]
+        >>> plt.plot(percent_values, weights[0])
+        >>> plt.plot(percent_values, weights[1])
+        >>> plt.xlabel('Percent')
+        >>> plt.ylabel('Weight')
+        >>> plt.title('Word weight over section traversal')
+        >>> plt.show()
         """
         start_weight = section[0][word_index][1]
         end_weight = section[1][word_index][1]
-
-        #Constants for now, if time allows we can make these equations.
-        frequency = 0.1 # .333 0.1...10 determines how quickly the weights oscillate between the start and end values
-        amplitude = (random.randint(0, 10))/10 # .777 0.1...1 determines the strength of the oscillations
-
         # Compute the transition weight as a linear interpolation between the start and end weights
         linear_weight = start_weight + percent * (end_weight - start_weight)
-
-        # Compute the sinusoidal weights y=(sin(X*pi*10*2)+1)/2
-        sinusoidal_weight =  (np.sin(2 * np.pi * frequency * amplitude * linear_weight)+1)/2
-
-        return sinusoidal_weight
+        # Compute the cosinusoidal weights as a function of linear weight
+        cosinusoidal_weight = (np.cos(2 * np.pi * percent * 10) * 0.1) + (linear_weight * 1 + 0.1)
+        return cosinusoidal_weight
 
     @staticmethod
     def _get_frame_values_for_prompt_word_weights(sections,
