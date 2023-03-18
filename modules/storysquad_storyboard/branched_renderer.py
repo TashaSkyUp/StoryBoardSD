@@ -1,3 +1,4 @@
+import asyncio
 import random
 import logging
 import time
@@ -7,8 +8,8 @@ from modules.storysquad_storyboard.sb_rendering import SBImageResults
 import numpy as np
 from modules.storysquad_storyboard.constants import *
 
-logging.basicConfig(filename="branched_renderer.log",level=1)
-logger:logging.Logger = logging.getLogger("BranchedRenderer")
+logging.basicConfig(filename="branched_renderer.log", level=1)
+logger: logging.Logger = logging.getLogger("BranchedRenderer")
 logger.setLevel(logging.DEBUG)
 logger.info("entering branched renderer")
 
@@ -19,114 +20,19 @@ from modules.storysquad_storyboard.sb_rendering import DefaultRender, create_voi
 from modules.storysquad_storyboard.storyboard import StoryBoardPrompt, StoryBoardSeed, StoryBoardData, SBIHyperParams
 
 
-def do_testing(my_ren_p, storyboard_params, ui_params, render_func, test=-10):
-    voice_over_text = "one two three four five six seven eight nine ten"
-    voice_over_text = long_story_test_prompt
-    voice_over_text = short_story_test_prompt
-    negative_prompt = short_story_test_neg_prompt
+def sync_renderer(*args, **kwargs):
+    async def async_renderer_wrapper():
+        return await renderer(*args, **kwargs)
 
-    # create the voice-over
-    audio_f_path, vo_len_secs = create_voice_over_for_storyboard(voice_over_text, 1, DefaultRender.seconds)
-
-    sb_prompts = [
-        "dog:1.0 cat:0.0",
-        "dog:0.5 cat:0.5",
-        "dog:0.0 cat:1.0",
-    ]
-
-    sb_prompts = [
-        short_story_sb_prompt1,
-        short_story_sb_prompt2,
-        short_story_sb_prompt3,
-    ]
-
-    # recalculate the storyboard params
-    # vo_len_secs = 10.0
-    my_ren_p.fps = 8
-    my_ren_p.num_frames_per_section = int((my_ren_p.fps * vo_len_secs) / my_ren_p.sections)
-    my_ren_p.num_frames = my_ren_p.num_frames_per_section * my_ren_p.sections
-    my_ren_p.seconds = vo_len_secs
-
-    sb_seeds_list = [1, 2, 3]
-    ui_params = list(ui_params)
-    ui_params[1] = negative_prompt
-    ui_params[2] = 5  # steps
-
-    sb_prompt = StoryBoardPrompt(sb_prompts, my_ren_p.seconds, False)
-    sb_seeds = StoryBoardSeed(sb_seeds_list,
-                              [my_ren_p.seconds * .5,
-                               my_ren_p.seconds]
-                              )
-    rend_func = get_rend_func(sb_prompt, sb_seeds, ui_params, my_ren_p, render_func)
-    num_keyframes = int(my_ren_p.num_frames * .1)
-
-    return audio_f_path, num_keyframes, rend_func, sb_prompt
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(async_renderer_wrapper())
+    loop.close()
+    return result
 
 
-def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_rend_func, test=False,
-                                  early_stop=-1):
-    """
-    this function composes the other rendering function to render a storyboard
-    :param my_ren_p: the render parameters for the storyboard
-    :param storyboard_params: the storyboard parameters
-    :param ui_params: the ui parameters
-    :param sb_rend_func: the render function to use for rendering the SBMultiSampleArgs
-    :param test: if true, then the function will perform a quick test render
-    :param early_stop: if not -1, then the function will stop after this many seconds
-
-    Doctest not working due to import issues
-
-    >>> test_ui_params = ["test","nude",7,3,4,5,6,7,8,9,10,11,12,7.5]
-    >>> import importlib
-    >>> importlib.
-    >>> from modules.storysquad_storyboard.sb_sd_render import storyboard_call_endpoint
-    >>> compose_storyboard_render_dev(DefaultRender(),None,test_ui_params ,storyboard_call_endpoint ,test=True)
-    >>>
-    """
-    start_time = time.time()
-    my_ren_p.width = ui_params[4]
-    my_ren_p.height = ui_params[5]
-    if test == True:
-        audio_f_path, num_keyframes, rend_func, sb_prompt = \
-            do_testing(my_ren_p, storyboard_params, ui_params, sb_rend_func)
-
-    elif test == False:
-        audio_f_path, num_keyframes, rend_func, sb_prompt = do_compose_setup(
-            my_ren_p,
-            storyboard_params,
-            ui_params,
-            sb_rend_func
-        )
-    rend_func: Callable[[float], SBImageResults] = rend_func
-
-    num_frames = my_ren_p.num_frames
-    minimum_via_diff = .012  # this is a magic number, found by trial and error at 24 fps
-
-    all_imgs_by_seconds = renderer(minimum_via_diff,
-                                   num_frames,
-                                   num_keyframes,
-                                   rend_func,
-                                   sb_prompt,
-                                   my_ren_p.seconds)
-
-    for k, v in all_imgs_by_seconds.items():
-        if "frame_type" not in v.info:
-            v.info["frame_type"] = "unknown"
-        logger.info(msg=f'time: {k}, frame type: {v.info["frame_type"]}')
-
-    logger.info(msg=f'total of {len(all_imgs_by_seconds)} frames')
-
-    images_to_save = [i for i in all_imgs_by_seconds.values()]
-    images_to_save = [i for i in all_imgs_by_seconds.values()]
-
-    target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save, my_ren_p.fps, my_ren_p.width, my_ren_p.height)
-    end_time = time.time()
-    logger.info(f"total time: {end_time - start_time}")
-    return target_mp4_f_path
-
-
-def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_func: callable,
-             sb_prompt: StoryBoardPrompt,seconds_length: float) -> [Image]:
+async def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_func: callable,
+                   sb_prompt: StoryBoardPrompt, seconds_length: float) -> [Image]:
     """
     Renders a sequence of images using the given rendering function.
 
@@ -146,7 +52,8 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
     """
     # seed the image list with a batch of images
     all_imgs_by_seconds_times = [i for i in np.arange(0, seconds_length, seconds_length / MAX_BATCH_SIZE)]
-    all_imgs_by_seconds_images = rend_func(all_imgs_by_seconds_times).all_images[-MAX_BATCH_SIZE:]
+    all_imgs_by_seconds_images = await rend_func(all_imgs_by_seconds_times)
+    all_imgs_by_seconds_images = all_imgs_by_seconds_images.all_images[-MAX_BATCH_SIZE:]
     all_imgs_by_seconds = dict(zip(all_imgs_by_seconds_times, all_imgs_by_seconds_images))
     # set the first batch of images to be keyframes
     for i in all_imgs_by_seconds:
@@ -300,7 +207,7 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
                 # to 255 and is no longer linear
 
                 logger.info(f'adding {i_frames_needed} -{frame_type}'
-                             f'- (interpolation) frames between {src_pair[0]} and {src_pair[1]}')
+                            f'- (interpolation) frames between {src_pair[0]} and {src_pair[1]}')
 
                 p_s = np.interp(fp=[0, 1],
                                 xp=[0, 1],
@@ -315,6 +222,47 @@ def renderer(minimum_via_diff: float, num_frames: int, num_keyframes: int, rend_
                     v.info["frame_type"] = "i"
                     all_imgs_by_seconds[k] = v
     return all_imgs_by_seconds
+
+
+def get_rend_func(sb_prompt: StoryBoardPrompt, sb_seeds: StoryBoardSeed, ui_params: [], my_ren_p, render_func):
+    """
+    This function composes the render function that will be used to call the render function
+    """
+    get_sbih_for_time: Callable[[Any], SBIHyperParams] = lambda time_idx: \
+        SBIHyperParams(prompt=sb_prompt[time_idx],
+                       negative_prompt=ui_params[1],
+                       steps=ui_params[2],
+                       seed=sb_seeds.get_prime_seeds_at_times(time_idx),
+                       subseed=sb_seeds.get_subseeds_at_times(time_idx),
+                       subseed_strength=sb_seeds.get_subseed_strength_at_times(time_idx),
+                       cfg_scale=ui_params[13]
+                       )
+    render_time_idx: Callable[[Any], Any] = lambda time_idx: render_func(
+        SBMultiSampleArgs(hyper=get_sbih_for_time(time_idx),
+                          render=my_ren_p))
+    return render_time_idx
+
+
+def get_rend_func_async(sb_prompt: StoryBoardPrompt, sb_seeds: StoryBoardSeed, ui_params: [], my_ren_p, render_func):
+    """
+    This function composes the render function that will be used to call the render function
+    """
+
+    async def render_time_idx(time_idx: Any) -> Any:
+        sb_multi_sample_args = SBMultiSampleArgs(
+            hyper=SBIHyperParams(prompt=sb_prompt[time_idx],
+                                 negative_prompt=ui_params[1],
+                                 steps=ui_params[2],
+                                 seed=sb_seeds.get_prime_seeds_at_times(time_idx),
+                                 subseed=sb_seeds.get_subseeds_at_times(time_idx),
+                                 subseed_strength=sb_seeds.get_subseed_strength_at_times(time_idx),
+                                 cfg_scale=ui_params[13]
+                                 ),
+            render=my_ren_p
+        )
+        return await render_func(sb_multi_sample_args)
+
+    return render_time_idx
 
 
 def do_compose_setup(my_ren_p, storyboard_params, ui_params, render_func):
@@ -337,26 +285,113 @@ def do_compose_setup(my_ren_p, storyboard_params, ui_params, render_func):
                               [my_ren_p.seconds * .5,
                                my_ren_p.seconds]
                               )
-    rend_func = get_rend_func(sb_prompt, sb_seeds, ui_params, my_ren_p, render_func)
+    rend_func = get_rend_func_async(sb_prompt, sb_seeds, ui_params, my_ren_p, render_func)
 
     num_keyframes = int(my_ren_p.num_frames * .1)
     return audio_f_path, num_keyframes, rend_func, sb_prompt
 
 
-def get_rend_func(sb_prompt: StoryBoardPrompt, sb_seeds: StoryBoardSeed, ui_params: [], my_ren_p, render_func):
+def do_testing(my_ren_p, storyboard_params, ui_params, render_func, test=-10):
+    voice_over_text = "one two three four five six seven eight nine ten"
+    voice_over_text = long_story_test_prompt
+    voice_over_text = short_story_test_prompt
+    negative_prompt = short_story_test_neg_prompt
+
+    # create the voice-over
+    audio_f_path, vo_len_secs = create_voice_over_for_storyboard(voice_over_text, 1, DefaultRender.seconds)
+
+    sb_prompts = [
+        "dog:1.0 cat:0.0",
+        "dog:0.5 cat:0.5",
+        "dog:0.0 cat:1.0",
+    ]
+
+    sb_prompts = [
+        short_story_sb_prompt1,
+        short_story_sb_prompt2,
+        short_story_sb_prompt3,
+    ]
+
+    # recalculate the storyboard params
+    # vo_len_secs = 10.0
+    my_ren_p.fps = 8
+    my_ren_p.num_frames_per_section = int((my_ren_p.fps * vo_len_secs) / my_ren_p.sections)
+    my_ren_p.num_frames = my_ren_p.num_frames_per_section * my_ren_p.sections
+    my_ren_p.seconds = vo_len_secs
+
+    sb_seeds_list = [1, 2, 3]
+    ui_params = list(ui_params)
+    ui_params[1] = negative_prompt
+    ui_params[2] = 5  # steps
+
+    sb_prompt = StoryBoardPrompt(sb_prompts, my_ren_p.seconds, False)
+    sb_seeds = StoryBoardSeed(sb_seeds_list,
+                              [my_ren_p.seconds * .5,
+                               my_ren_p.seconds]
+                              )
+    rend_func = get_rend_func_async(sb_prompt, sb_seeds, ui_params, my_ren_p, render_func)
+    num_keyframes = int(my_ren_p.num_frames * .1)
+
+    return audio_f_path, num_keyframes, rend_func, sb_prompt
+
+
+def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_rend_func, test=False,
+                                  early_stop=-1):
     """
-    This function composes the render function that will be used to call the render function
+    this function composes the other rendering function to render a storyboard
+    :param my_ren_p: the render parameters for the storyboard
+    :param storyboard_params: the storyboard parameters
+    :param ui_params: the ui parameters
+    :param sb_rend_func: the render function to use for rendering the SBMultiSampleArgs
+    :param test: if true, then the function will perform a quick test render
+    :param early_stop: if not -1, then the function will stop after this many seconds
+
+    Doctest not working due to import issues
+
+    >>> test_ui_params = ["test","nude",7,3,4,5,6,7,8,9,10,11,12,7.5]
+    >>> import importlib
+    >>> importlib.
+    >>> from modules.storysquad_storyboard.sb_sd_render import storyboard_call_endpoint
+    >>> compose_storyboard_render_dev(DefaultRender(),None,test_ui_params ,storyboard_call_endpoint ,test=True)
+    >>>
     """
-    get_sbih_for_time: Callable[[Any], SBIHyperParams] = lambda time_idx: \
-        SBIHyperParams(prompt=sb_prompt[time_idx],
-                       negative_prompt=ui_params[1],
-                       steps=ui_params[2],
-                       seed=sb_seeds.get_prime_seeds_at_times(time_idx),
-                       subseed=sb_seeds.get_subseeds_at_times(time_idx),
-                       subseed_strength=sb_seeds.get_subseed_strength_at_times(time_idx),
-                       cfg_scale=ui_params[13]
-                       )
-    render_time_idx: Callable[[Any], Any] = lambda time_idx: render_func(
-        SBMultiSampleArgs(hyper=get_sbih_for_time(time_idx),
-                          render=my_ren_p))
-    return render_time_idx
+    start_time = time.time()
+    my_ren_p.width = ui_params[4]
+    my_ren_p.height = ui_params[5]
+    if test == True:
+        audio_f_path, num_keyframes, rend_func, sb_prompt = \
+            do_testing(my_ren_p, storyboard_params, ui_params, sb_rend_func)
+
+    elif test == False:
+        audio_f_path, num_keyframes, rend_func, sb_prompt = do_compose_setup(
+            my_ren_p,
+            storyboard_params,
+            ui_params,
+            sb_rend_func
+        )
+    rend_func: Callable[[float], SBImageResults] = rend_func
+
+    num_frames = my_ren_p.num_frames
+    minimum_via_diff = .012  # this is a magic number, found by trial and error at 24 fps
+
+    all_imgs_by_seconds = sync_renderer(minimum_via_diff,
+                                        num_frames,
+                                        num_keyframes,
+                                        rend_func,
+                                        sb_prompt,
+                                        my_ren_p.seconds)
+
+    for k, v in all_imgs_by_seconds.items():
+        if "frame_type" not in v.info:
+            v.info["frame_type"] = "unknown"
+        logger.info(msg=f'time: {k}, frame type: {v.info["frame_type"]}')
+
+    logger.info(msg=f'total of {len(all_imgs_by_seconds)} frames')
+
+    images_to_save = [i for i in all_imgs_by_seconds.values()]
+
+    target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save, my_ren_p.fps, my_ren_p.width,
+                                              my_ren_p.height)
+    end_time = time.time()
+    logger.info(f"total time: {end_time - start_time}")
+    return target_mp4_f_path

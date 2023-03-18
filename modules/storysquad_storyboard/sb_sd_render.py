@@ -1,5 +1,8 @@
 import base64
+import random
+from typing import Any
 
+import httpx
 from PIL import Image
 
 import modules.scripts
@@ -117,7 +120,7 @@ def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImage
     return sb_results
 
 
-def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -> SBImageResults:
+async def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -> SBImageResults:
     p = get_sd_txt_2_image_params_from_story_board_params(params)
 
     p.scripts = modules.scripts.scripts_txt2img
@@ -129,12 +132,12 @@ def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -> SBIm
     p.do_not_save_samples = True
 
     try:
-        processed = \
-            call_json_api_endpoint(url=STORYBOARD_RENDER_SERVER_URLS[0],
-                                   data=p)
+        # Choose a random server URL from the list
+        server_url = random.choice(STORYBOARD_RENDER_SERVER_URLS)
+        processed = await call_json_api_endpoint_2(url=server_url, data=p)
     except Exception as e:
         print(e)
-        # try to process each prompt separately
+        # try to process each prompt separately this will fail if running UI only
         results = []
         for i in range(len(params.combined.hyper.prompt)):
             try:
@@ -178,6 +181,25 @@ def call_json_api_endpoint(url, data):
         data.pop("script_args")
         data.pop("s_tmax")
     res = requests.post(url, data=json.dumps(data), headers=headers)
+    rj = res.json()
+    rj["images"] = [decode_base64_to_image(i) for i in rj["images"]]
+    return rj
+
+
+async def call_json_api_endpoint_2(url: str, data: Any) -> dict:
+    headers = {'content-type': 'application/json'}
+    if isinstance(data, StableDiffusionProcessingTxt2Img):
+        data = vars(data)
+        data.pop("scripts", None)
+        data.pop("script_args")
+        data.pop("s_tmax")
+
+    timeout = httpx.Timeout(60.0)  # Set the read timeout to 60 seconds
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(url=url,
+                                data=json.dumps(data),
+                                headers=headers)
+
     rj = res.json()
     rj["images"] = [decode_base64_to_image(i) for i in rj["images"]]
     return rj

@@ -1,0 +1,25 @@
+@startuml
+
+actor User
+participant "Gradio Interface" as GI
+participant "app.py" as APP
+participant "storyboard_gr.py" as SGR
+database "branched_renderer.py" as BR
+database "sb_sd_render.py" as SSR
+participant "Async API Endpoint" as API
+
+User -> GI : Interact with interface
+GI -> APP : Pass user inputs
+APP -> SGR : Call on_render_storyboard_dev()
+SGR -> BR : Call compose_storyboard_render_dev()
+BR -> SSR : Call sync_renderer()
+
+SSR -> SSR : Prepare and call call_json_api_endpoint_2_async()
+SSR -[dashed]-> API : Send request (HTTP POST)
+API -[dashed]-> SSR : Send response (JSON)
+SSR -> BR : Return images
+BR -> SGR : Return complete_mp4_f_path
+SGR -> APP : Return rendered storyboard
+APP -> GI : Display storyboard
+
+@enduml
