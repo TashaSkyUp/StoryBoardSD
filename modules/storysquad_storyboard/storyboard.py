@@ -396,7 +396,7 @@ class StoryBoardPrompt:
         :return: float representing the weight of the word
 
         >>> test_obj = StoryBoardPrompt("doctests", [.5,.5])
-        >>> percent_values = np.linspace(0, 1, 100)
+        >>> percent_values = np.linspace(0, 1, 1000)
         >>> weights = [[test_obj._get_word_weight_at_percent(test_obj._sections[0], word_index=i, percent=p) for p in percent_values] for i in range(2)]
         >>> plt.plot(percent_values, weights[0])
         >>> plt.plot(percent_values, weights[1])
@@ -410,7 +410,10 @@ class StoryBoardPrompt:
         # Compute the transition weight as a linear interpolation between the start and end weights
         linear_weight = start_weight + percent * (end_weight - start_weight)
         # Compute the cosinusoidal weights as a function of linear weight
-        cosinusoidal_weight = (np.cos(2 * np.pi * percent * 10) * 0.1) + (linear_weight * 1 + 0.1)
+        frequency = 40
+        amplitude = -1/10 # -1 to 1
+        cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (abs(amplitude))
+
         return cosinusoidal_weight
 
     @staticmethod
