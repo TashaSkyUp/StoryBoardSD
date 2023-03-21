@@ -2,10 +2,13 @@ import json
 import numpy as np
 import os
 import numbers
-import random
 from dataclasses import dataclass
 from typing import List, Any
 import matplotlib.pyplot as plt
+import spacy
+import re
+
+
 DEV_MODE = os.getenv("STORYBOARD_DEV_MODE", "False") == "True"
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
@@ -155,7 +158,8 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
     >>> get_prompt_words_and_weights_list("hello:5 (world:0.2) how (are) you")
     [('hello', 5.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     """
-    if prompt == "": raise ValueError("prompt cannot be empty")
+    if prompt == "":
+        raise ValueError("prompt cannot be empty")
     prompt = sanitize_prompt(prompt)
     words = prompt.split(" ")
     possible_word_weight_pairs = [i.split(":") for i in words]
@@ -228,6 +232,16 @@ def sanitize_prompt(prompt):
     prompt = prompt.replace("(", "").replace(")", "")
     return prompt.strip()
 
+def remove_all_but_words(prompt) -> str:
+        """
+        >>> remove_all_but_words("Get :1.2 busy:1. living:0.4 or:0 get: 0 busy:0 dying:0.6.")
+        'Get busy living or get busy dying'
+        """
+        chars = re.compile('[^a-zA-Z\s]+')
+        clean = chars.sub(' ', prompt)
+        words = ' '.join(clean.split()).strip()
+        return words
+
 
 from typing import List, Tuple
 
@@ -253,19 +267,35 @@ class StoryBoardPrompt:
     the first section has a weight of 1 for dog, and 0 for cat
     the second section has a weight of 1 for dog, and 1 for cat
     the third section has a weight of 0 for dog, and 1 for cat
-
+ 
     this provides a way to render the prompt attribute of a story board at a specified point in time
 
     >>> try:
     ...     SB = StoryBoardPrompt("doctests", [.5,.5])
     ...     SB._get_prompt_at_time(0.5)
     ... except Exception as e:
-    ...     print(e)
+    ...     raise(e)
     '(dog:1.00000000)(cat:1.00000000)'
     """
 
     def __init__(self, prompts: List[str] or str, seconds_lengths: List[float], use_only_nouns=False):
+
         self.noun_list = _get_noun_list()
+        self.nlp = spacy.load("en_core_web_sm")
+        text = "Get :1.2 busy:1. living:0.4 or:0 get: 0 busy:0 dying:0.6."
+        self.doc = self.nlp("Get :1.2 busy:1 living:0.4 or:0 get:0 busy:0 dying:0.6.")
+
+        # Regex to reduce prompt to just letters and spaces
+        self.chars = re.compile('[^a-zA-Z\s]+')
+        self.clean = self.chars.sub(' ', text)
+
+        # # Regex to remove all extra whitespace (slower than split/join but gives more customizable control)
+        # self.spaces = re.compile(r'\s+') # " r'\s+' " translates to any space (tabs, newlines) or combination
+        # self.mint = self.spaces.sub(' ', self.clean).strip()
+
+        #
+        self.trim = ' '.join(self.clean.split())
+        # c_text = self.regex.sub('',(text
 
         self._prompts = prompts
         if isinstance(seconds_lengths, list):
@@ -367,7 +397,7 @@ class StoryBoardPrompt:
         ...     SB = StoryBoardPrompt("doctests", [0.5, 0.5])
         ...     SB._get_sections(SB._words_and_weights)
         ... except Exception as e:
-        ...     print(e)
+        ...     print(e.message)
         [[[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 1.0)]], [[('dog', 1.0), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]]
         """
         sections: List[List[List[Tuple[str, float]]]] = [
@@ -404,17 +434,20 @@ class StoryBoardPrompt:
         >>> plt.ylabel('Weight')
         >>> plt.title('Word weight over section traversal')
         >>> plt.show()
+        Text(0.5, 1.0, 'Word weight over section traversal')
         """
-        start_weight = section[0][word_index][1]
+        curr_word = section[0][word_index][0] # word text
+          # word text
+        start_weight = section[0][word_index][1] # word weight
         end_weight = section[1][word_index][1]
         # Compute the transition weight as a linear interpolation between the start and end weights
         linear_weight = start_weight + percent * (end_weight - start_weight)
         # Compute the cosinusoidal weights as a function of linear weight
-        frequency = 40
+        frequency = 3
         amplitude = -1/10 # -1 to 1
         cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (abs(amplitude))
 
-        return cosinusoidal_weight
+        return cosinusoidal_weight if curr_word == curr_word else linear_weight
 
     @staticmethod
     def _get_frame_values_for_prompt_word_weights(sections,
@@ -475,7 +508,7 @@ class StoryBoardPrompt:
         ...     SB._get_prompt_at_time(0.75)
         ... except Exception as e:
         ...     raise e
-        '(dog:0.50000000)(cat:1.00000000)'
+        '(dog:0.70000000)(cat:1.20000000)'
 
         """
 
