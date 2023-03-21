@@ -1,3 +1,4 @@
+import copy
 import json
 import numpy as np
 import os
@@ -34,6 +35,32 @@ if DEV_MODE:
     DEFAULT_HYPER_PARAMS_DICT = DEV_HYPER_PARAMS
 else:
     DEFAULT_HYPER_PARAMS_DICT = DEV_HYPER_PARAMS
+
+
+class UniqueList:
+    def __init__(self):
+        self._list = []
+        self._set = set()
+
+    def append(self, item):
+        if item not in self._set:
+            self._list.append(item)
+            self._set.add(item)
+
+    def __getitem__(self, index):
+        return self._list[index]
+
+    def __setitem__(self, index, value):
+        if value not in self._set:
+            self._set.discard(self._list[index])
+            self._list[index] = value
+            self._set.add(value)
+
+    def __len__(self):
+        return len(self._list)
+
+    def __repr__(self):
+        return repr(self._list)
 
 
 class SBIHyperParams:
@@ -255,6 +282,46 @@ def _get_noun_list() -> List[str]:
     return noun_list
 
 
+class Interpolatable:
+    def __init__(self, start, end, progress, interfunc=None):
+        self.x = start
+        self.y = end
+        self.p = progress
+
+        if interfunc is None:
+            self.interfunc = lambda x, y, p: x + (y - x) * p
+
+        if progress > 1 or progress < 0:
+            raise ValueError(f"progress must be between 0 and 1; got: {progress}")
+        self.progress = progress
+
+    def __call__(self, p):
+        return self.interfunc(self.x, self.y, p)
+
+    def __add__(self, other):
+        if isinstance(other, float) and 0 <= other <= 1:
+            # add progress
+            return StoryBoardSeed.InteropSeed(self.x, self.y, self.progress + other)
+        else:
+            raise ValueError(f"Cannot add {type(other)} to {type(self)}, only float between 0 and 1")
+
+    def __sub__(self, other):
+        if isinstance(other, float) and 0 <= other <= 1:
+            # subtract progress
+            return StoryBoardSeed.InteropSeed(self.x, self.y, self.progress - other)
+        else:
+            raise ValueError(f"Cannot subtract {type(other)} from {type(self)}, only float between 0 and 1")
+
+    def __repr__(self):
+        return f"({self.x}, {self.y}, {self.progress})"
+
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y and self.progress == other.progress
+
+    def __hash__(self):
+        return hash((self.x, self.y, self.progress))
+
+
 class StoryBoardPrompt:
     """
     A prompt for storyboard consists of all the words for every section of the storyboard, and a function to sample
@@ -361,25 +428,25 @@ class StoryBoardPrompt:
         except IndexError as e:
             raise e
 
-    def _slice(self,slice: slice):
+    def _slice(self, slice: slice):
         start_time = slice.start
         stop_time = slice.stop
         if start_time is None:
             start_time = 0
         if stop_time is None:
             stop_time = 1
-        start_prompt = self(start_time)[0] # this returns a prompt, one of the new helix points
-        stop_prompt = self(stop_time)[0] # this returns a prompt, one of the new helix points
+        start_prompt = self(start_time)[0]  # this returns a prompt, one of the new helix points
+        stop_prompt = self(stop_time)[0]  # this returns a prompt, one of the new helix points
 
         # check if a helix point is contained between start and stop
         # if so, then we need to include it in the output StoryBoardPrompt
         # if not, then we can just return a StoryBoardPrompt with two prompts and one section
-        helix_point_times:[float] = self._times_sections_start
+        helix_point_times: [float] = self._times_sections_start
 
-        helix_point_prompts:[str] = [
+        helix_point_prompts: [str] = [
             start_prompt,
         ]
-        new_section_lengths:[float] = []
+        new_section_lengths: [float] = []
         for i in range(len(helix_point_times)):
             if start_time < helix_point_times[i] < stop_time:
                 helix_point_prompts.append(self._get_prompt_at_time(helix_point_times[i]))
@@ -388,8 +455,10 @@ class StoryBoardPrompt:
         new_start_section_length = helix_point_times[1] - start_time
         new_end_section_length = stop_time - helix_point_times[-1]
 
-        if new_end_section_length == 0 or new_start_section_length == 0: num_sections = 1
-        else: num_sections = len(helix_point_prompts)
+        if new_end_section_length == 0 or new_start_section_length == 0:
+            num_sections = 1
+        else:
+            num_sections = len(helix_point_prompts)
 
         if num_sections == 1:
             new_section_lengths = [stop_time - start_time]
@@ -397,7 +466,6 @@ class StoryBoardPrompt:
             new_section_lengths = [new_start_section_length] + new_section_lengths + [new_end_section_length]
         ret = StoryBoardPrompt(helix_point_prompts, new_section_lengths)
         return ret
-
 
     @staticmethod
     def _sanitize_prompt(prompt):
@@ -419,7 +487,7 @@ class StoryBoardPrompt:
             prompt = prompt.replace("  ", " ")
         # removed for now because it prevents slicing the object
         # prompt = prompt.replace("(", "").replace(")", "")
-        prompt=prompt.replace(")(", " ")
+        prompt = prompt.replace(")(", " ")
         prompt = prompt.replace("(", "").replace(")", "")
         return prompt.strip()
 
@@ -587,72 +655,408 @@ class StoryBoardPrompt:
         return out
 
 
-class StoryBoardSeed():
+class StoryBoardSeed:
+    """
+    The StoryBoardSeed class represents a storyboard containing a sequence of seeds and their corresponding times. It manages the transition between seeds and provides methods to retrieve prime seeds, sub seeds, and their interpolation progress at specified times. The class can be used to manage and manipulate a collection of Seed objects and their transitions over time.
 
-    def __init__(self, seeds: [int], times: [int]):
-        self.seeds = seeds
-        self.times = times
+    Attributes:
+    seeds (List[int]): A list of seed values.
+    times (List[int]): A list of times corresponding to each seed value.
+    seeds and times are conceptualized as sections:
+    section[i] = (start_seed = seeds[i],
+                  start_time = times[i],
+                  end_seed = seeds[i+1],
+                  end_time = times[i+1])
+    this gives us len(seeds) - 1 total number of sections
 
-    def get_seed_at_time(self, seconds):
+    Methods:
+    get_seed_at_time(seconds): Returns the seed value at the specified time.
+    get_sub_seed_at_time(seconds): Returns the sub seed value at the specified time.
+    get_progress_at_time(seconds): Returns the interpolation progress at the specified time.
+
+    """
+
+    class InteropSeed(Interpolatable):
+        def __init__(self, seed_x, seed_y, progress, interfunc=None):
+            if progress > 1 or progress < 0:
+                raise ValueError(f"progress must be between 0 and 1; got: {progress}")
+
+            super().__init__(seed_x, seed_y, progress, interfunc=interfunc)
+            self.interfunc = lambda x, y, p: self.__class__(x, y, p)
+
+        def __repr__(self):
+            return f"InteropSeed({self.x}, {self.y}, {self.progress})"
+
+        def __str__(self):
+            return f"InteropSeed({self.x}, {self.y}, {self.progress})"
+
+    class TimeSection(Interpolatable):
+        def __init__(self, start_time, end_time, interfunc=None):
+            super().__init__(start_time, end_time, 0, interfunc=interfunc)
+
+        def __contains__(self, item):
+            if issubclass(item.__class__, Interpolatable):
+                return self.x <= item.x <= self.y and self.x <= item.y <= self.y
+
+            elif isinstance(item, (float,int)):
+                return self.x <= item <= self.y
+
+            else:
+                raise ValueError(f"TimeSection.__contains__ only supports Interpolatable and float; got: {type(item)}")
+
+        def __repr__(self):
+            return f"TimeSection({self.x}, {self.y})"
+
+        def __str__(self):
+            return f"TimeSection({self.x}, {self.y})"
+
+    class InterpolatableSection:
+        def __init__(self, i_seed_start: Interpolatable, i_seed_end: Interpolatable, intr_time: Interpolatable):
+            self.i_seed_start = i_seed_start
+            self.i_seed_end = i_seed_end
+            if not self.i_seed_start.y == self.i_seed_end.x:
+                if i_seed_start.y == i_seed_end.y and i_seed_start.x == i_seed_end.x:
+                    pass
+                else:
+                    raise ValueError(
+                        f"i_seed_start.y must equal i_seed_end.x; got: {self.i_seed_start.y} != {self.i_seed_end.x}"
+                    )
+            self.i_time = intr_time
+
+        def __call__(self, time):
+            if not isinstance(time, (float, int)):
+                raise ValueError(f"Time must be a float or int; got: {type(time)}")
+
+            if time in self.i_time:
+                return self.get_i_seed(time)
+
+            else:
+                raise ValueError(f"Time is not in the interpolatable section: {time}")
+
+        def get_i_seed(self, time):
+
+            # find the percent of the time that has passed
+            time_into_section_per = (time - self.i_time.x) / (self.i_time.y - self.i_time.x)
+
+            # seeds are arranged as (a,b,p1) (b,c,p2)
+            # meaning that there is some point between a and b at p1
+            # and some point between b and c at p2
+            # so the space specified to traverse is 1-p1 + p2
+
+            space_in_between_seeds = 1 - self.i_seed_start.p + self.i_seed_end.p
+            start_seed_space_per = (1 - self.i_seed_start.p) / space_in_between_seeds
+            end_seed_space_per = self.i_seed_end.p / space_in_between_seeds
+
+            inflection_point_per = start_seed_space_per
+
+            if time_into_section_per < inflection_point_per:
+                per_into_start_seed_per = time_into_section_per / inflection_point_per
+                amnt_in_start_seed = 1 - self.i_seed_start.p
+                eval_p = self.i_seed_start.p + (amnt_in_start_seed * per_into_start_seed_per)
+                ret = self.i_seed_start(eval_p)
+            else:
+                time_per_remaining = (1 - inflection_point_per)
+                if time_per_remaining == 0:
+                    return self.i_seed_end
+                per_into_end_seed_per = (time_into_section_per - inflection_point_per) / (1 - inflection_point_per)
+                amnt_in_end_seed = self.i_seed_end.p
+                eval_p = (amnt_in_end_seed * per_into_end_seed_per)
+                ret = self.i_seed_end(eval_p)
+
+            return ret
+
+        def __repr__(self):
+            return f"InterpolatableSection({self.i_seed_start}, {self.i_seed_end}, {self.i_time})"
+
+        def __str__(self):
+            return f"InterpolatableSection({self.i_seed_start}, {self.i_seed_end}, {self.i_time})"
+
+        def __contains__(self, item):
+            return self.i_time.__contains__(item)
+
+    def __init__(self, seeds: List[int] or List[InteropSeed], times: List[float] or List[TimeSection]):
+        if isinstance(seeds[0], int) and isinstance(times[0], (float, int)):
+            self.seeds = seeds
+            self.times = times
+            if len(seeds) != len(times):
+                raise ValueError("seeds and times must be the same length")
+
+            # Check for negative time values
+            if any(t < 0 for t in times):
+                raise ValueError("Negative time values are not allowed")
+
+            # create interop seeds
+            self.interop_seeds = []
+            for i in range(len(seeds) - 1):
+                self.interop_seeds.append(StoryBoardSeed.InteropSeed(seeds[i], seeds[i + 1], 0))
+                self.interop_seeds.append(StoryBoardSeed.InteropSeed(seeds[i], seeds[i + 1], 1))
+
+            # filter out seeds that are the same
+            for i in range(len(seeds) - 1):
+                if self.interop_seeds[i].y == self.interop_seeds[i + 1].x:
+                    if (self.interop_seeds[i].p == 1) and (self.interop_seeds[i + 1].p == 0):
+                        self.interop_seeds.pop(i)
+
+            # create the time sections
+            self.time_sections = []
+            for i in range(len(times) - 1):
+                self.time_sections.append(StoryBoardSeed.TimeSection(times[i], times[i + 1]))
+
+                # Check for overlapping time sections
+                if self.time_sections[-1].x >= self.time_sections[-1].y:
+                    raise ValueError("Overlapping time sections are not allowed")
+
+            # create the interpolatable sections
+            self.interpolatable_sections = []
+            for i in range(len(self.interop_seeds) - 1):
+                self.interpolatable_sections.append(
+                    StoryBoardSeed.InterpolatableSection(self.interop_seeds[i], self.interop_seeds[i + 1],
+                                                         self.time_sections[i])
+                )
+            pass
+        elif isinstance(seeds[0], Interpolatable) and isinstance(times[0], Interpolatable):
+            self.interop_seeds = seeds
+            self.time_sections = times
+            if len(seeds) == len(times) + 1:
+                # create the interpolatable sections
+                self.interpolatable_sections = []
+                for i in range(len(self.interop_seeds) - 1):
+                    self.interpolatable_sections.append(
+                        StoryBoardSeed.InterpolatableSection(self.interop_seeds[i], self.interop_seeds[i + 1],
+                                                             self.time_sections[i])
+                    )
+            self.times = {tm.x for tm in self.time_sections}
+            pass
+        else:
+            raise ValueError("seeds and times must be of the same type")
+
+    def get_time_points(self):
+        """ This function returns the time points that the seed changes at """
+        return self.times
+
+    def get_seed_at_time(self, seconds) -> InteropSeed:
         """
-        >>> times = [4,8,16]
+        >>> times = [0,4,8]
         >>> seeds = [1,2,3]
-        >>> StoryBoardSeed(seeds,times).get_seed_at_time(0.0)
-        (1, 2, 0.0)
-        >>> StoryBoardSeed(seeds,times).get_seed_at_time(1.0)
-        (1, 2, 0.25)
-        >>> StoryBoardSeed(seeds,times).get_seed_at_time(4.0)
-        (1, 2, 1.0)
         >>> StoryBoardSeed(seeds,times).get_seed_at_time(4.01)
-        (2, 3, 0.0024999999999999467)
-
-
+        InteropSeed(2, 3, 0.004999999999999893)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(4.0)
+        InteropSeed(2, 3, 0)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(0.0)
+        InteropSeed(1, 2, 0.0)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(1.0)
+        InteropSeed(1, 2, 0.25)
         """
-        times = self.times
-        times = [0] + times
-        seeds = self.seeds
-        import numpy as np
-        if seconds < times[0]:
-            raise ValueError("seconds cannot be less than the start time of the storyboard")
-        if seconds > times[-1]:
-            raise ValueError("seconds cannot be greater than the end time of the storyboard")
-        index = np.searchsorted(times, seconds) - 1
-        index = max(index, 0)
-        total_time_in_section = times[index] - times[index + 1]
-        time_into_section = seconds - times[index]
-        percent_into_section = time_into_section / total_time_in_section
-        return seeds[index], seeds[index + 1], abs(percent_into_section)
+
+        # find the section
+        for section in self.interpolatable_sections:
+            if seconds in section:
+                # found the correct section
+                break
+        else:
+            raise ValueError("seconds is not in any section")
+
+        # get the seed and time interpolatables
+        intr_seed = section.get_i_seed(seconds)
+        return intr_seed
+        intr_time = section.i_time
+
+        # get the start and end seeds
+        start_seed = intr_seed.x
+        end_seed = intr_seed.y
+
+        # get the start and end times
+        start_time = intr_time.x
+        end_time = intr_time.y
+
+        # get the time range
+        time_range = end_time - start_time
+
+        # get the time progress
+        time_progress = seconds - start_time
+
+        # get the time progress percent
+        time_progress_percent = time_progress / time_range
+
+        # this happens when seconds == end_time
+        if time_progress_percent == 1.0:
+            time_progress_percent = 0.0
+            start_seed = end_seed
+            end_seed = None
+
+        return Interpolatable(start_seed, end_seed, time_progress_percent)
 
     def get_seeds_at_times(self, seconds_list):
         """
-        >>> times = [4,8,16]
-        >>> seeds = [1,2,3]
-        >>> sbseeds = StoryBoardSeed(seeds,times)
-        >>> sbseeds.get_seeds_at_times([0.0,1.0,4.0,4.01])
-        [(1, 2, 0.0), (1, 2, 0.25), (1, 2, 1.0), (2, 3, 0.0024999999999999467)]
-        >>> sbseeds.get_prime_seeds_at_times([0.0,1.0,4.0,4.01])
-        [1, 1, 1, 2]
-        >>> sbseeds.get_prime_seeds_at_times(0)
-        [1]
+        >>> seeds = [1, 2, 3]
+        >>> times = [0, 4, 8]
+        >>> sbseeds = StoryBoardSeed(seeds, times)
+        >>> sbseeds.get_seeds_at_times([0.0, 1.0, 4.0, 4.01])
+        [InteropSeed(1, 2, 0.0), InteropSeed(1, 2, 0.25), InteropSeed(2, 3, 0), InteropSeed(2, 3, 0.004999999999999893)]
+
+        # If the get_prime_seeds_at_times method is implemented, include the doctest for it in the appropriate method
+        # >>> sbseeds.get_prime_seeds_at_times([0.0, 1.0, 4.0, 4.01])
+        # [1, 1, 1, 2]
+        # >>> sbseeds.get_prime_seeds_at_times(0)
+        # [1]
         """
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s) for s in seconds_list]
 
     def get_prime_seeds_at_times(self, seconds_list):
+        """
+        >>> seeds = [1, 2, 3]
+        >>> times = [0, 4, 8]
+        >>> sbseeds = StoryBoardSeed(seeds, times)
+
+        # Test with a single float value
+        >>> sbseeds.get_prime_seeds_at_times(0.0)
+        [1]
+
+        # Test with a single integer value
+        >>> sbseeds.get_prime_seeds_at_times(1)
+        [1]
+
+        # Test with a list of float and integer values
+        >>> sbseeds.get_prime_seeds_at_times([0.0, 1.0, 4.0, 4.01])
+        [1, 1, 2, 2]
+        """
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
-        return [self.get_seed_at_time(s)[0] for s in seconds_list]
+        return [self.get_seed_at_time(s).x for s in seconds_list]
 
     def get_subseeds_at_times(self, seconds_list):
+        """
+        >>> seeds = [1, 2, 3]
+        >>> times = [0, 4, 8]
+        >>> sbseeds = StoryBoardSeed(seeds, times)
+
+        # Test with a single float value
+        >>> sbseeds.get_subseeds_at_times(0.0)
+        [2]
+
+        # Test with a single integer value
+        >>> sbseeds.get_subseeds_at_times(1)
+        [2]
+
+        # Test with a list of float and integer values
+        >>> sbseeds.get_subseeds_at_times([0.0, 1.0, 4.0, 4.01])
+        [2, 2, 3, 3]
+        """
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
-        return [self.get_seed_at_time(s)[1] for s in seconds_list]
+        return [self.get_seed_at_time(s).y for s in seconds_list]
 
     def get_subseed_strength_at_times(self, seconds_list):
+        """
+           >>> seeds = [1, 2, 3]
+           >>> times = [0, 4, 8]
+           >>> sbseeds = StoryBoardSeed(seeds, times)
+
+           # Test with a single float value
+           >>> sbseeds.get_subseed_strength_at_times(0.0)
+           [0.0]
+
+           # Test with a single integer value
+           >>> sbseeds.get_subseed_strength_at_times(1)
+           [0.25]
+
+           # Test with a list of float and integer values
+           >>> sbseeds.get_subseed_strength_at_times([0.0, 1.0, 4.0, 4.01])
+           [0.0, 0.25, 0, 0.004999999999999893]
+           """
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
-        return [self.get_seed_at_time(s)[2] for s in seconds_list]
+        return [self.get_seed_at_time(s).p for s in seconds_list]
+
+    def __repr__(self):
+        return f"StoryBoardSeed(seeds={self.interop_seeds}, times={self.time_sections})"
+
+    def __getitem__(self, item):
+        """
+        >>> test= StoryBoardSeed(
+        ... seeds = [1,2,3],times = [0., 4., 8.]
+        ... )
+        >>> test[2:8]
+        StoryBoardSeed(seeds=[InteropSeed(1, 2, 0.5), InteropSeed(2, 3, 0), InteropSeed(2, 3, 1.0)], times=[TimeSection(2.0, 4.0), TimeSection(4.0, 8.0)])
+        >>> test= StoryBoardSeed(
+        ... seeds = [1,2,3],times = [0., 4., 8.]
+        ... )
+        >>> test[2:7.9]
+        StoryBoardSeed(seeds=[InteropSeed(1, 2, 0.5), InteropSeed(2, 3, 0), InteropSeed(2, 3, 0.9500000000000002)], times=[TimeSection(2.0, 4.0), TimeSection(4.0, 7.9)])
+
+
+
+        """
+        if isinstance(item, slice):
+            start_time = float(item.start)
+            stop_time = float(item.stop)
+            step = item.step
+            if start_time is None:
+                start_time = 0
+            if stop_time is None:
+                stop_time = self.interpolatable_sections[-1].i_time.y
+            if step is not None:
+                raise ValueError("step is not supported")
+
+            # so really we need to evaluate the object at start, stop and every time index
+            # in sellf._times that resides in between start and stop
+            new_seeds = UniqueList()
+            new_times = UniqueList()
+            new_sections = []
+            sections_to_evaluate = []
+            for section in self.interpolatable_sections:
+                if start_time in section:
+                    sections_to_evaluate.append(section)
+
+            total_slice_intr = StoryBoardSeed.TimeSection(start_time, stop_time, 0.0)
+
+            for section in self.interpolatable_sections[:-1]:
+                if section.i_time in total_slice_intr:
+                    sections_to_evaluate.append(copy.deepcopy(section))
+
+            for section in self.interpolatable_sections:
+                if stop_time in section:
+                    sections_to_evaluate.append(copy.deepcopy(section))
+
+            for section in sections_to_evaluate:
+                new_times.append(copy.deepcopy(section.i_time))
+
+            new_times[0].x = start_time
+            new_times[0].y = new_times[1].x
+
+            new_times[-1].y = stop_time
+            new_times[-1].x = new_times[-2].y
+
+            for tm in new_times:
+                seedx = self.get_seed_at_time(tm.x)
+                seedy = self.get_seed_at_time(tm.y)
+                new_seeds.append(seedx)
+                new_seeds.append(seedy)
+            new_seeds[0] = self.get_seed_at_time(start_time)
+            new_seeds[-1] = self.get_seed_at_time(stop_time)
+
+            new_obj = StoryBoardSeed(new_seeds, new_times)
+
+            return new_obj
+
+        return self.get_seed_at_time(item)
+
+    def _test_interpolatable_section(self):
+        """
+        >>> i_seed_start = StoryBoardSeed.InteropSeed(1, 2, 0)
+        >>> i_seed_end = StoryBoardSeed.InteropSeed(2, 3, 1)
+        >>> i_time = StoryBoardSeed.TimeSection(0, 1)
+        >>> ints = StoryBoardSeed.InterpolatableSection(i_seed_start, i_seed_end, i_time)
+        >>> ints.get_i_seed(0.5)
+        InteropSeed(2, 3, 0.0)
+        >>> ints.get_i_seed(0.25)
+        InteropSeed(1, 2, 0.5)
+        >>> ints.get_i_seed(0.75)
+        InteropSeed(2, 3, 0.5)
+        """
+        pass
 
 
 class StoryBoardData:
@@ -662,9 +1066,10 @@ class StoryBoardData:
 
 
 if __name__ == "__main__":
-    import modules.paths
     import doctest
 
+    doctest.testmod()
+    exit()
     print(StoryBoardPrompt(
         [
             "super:1 hero:1 cat:0.0",
