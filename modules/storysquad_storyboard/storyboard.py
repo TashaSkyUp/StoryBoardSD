@@ -253,6 +253,8 @@ def _get_noun_list() -> List[str]:
     return noun_list
 
 
+
+
 class StoryBoardPrompt:
     """
     A prompt for storyboard consists of all the words for every section of the storyboard, and a function to sample
@@ -331,6 +333,8 @@ class StoryBoardPrompt:
         except IndexError:
             raise TypeError("args must be a float or a list of floats")
 
+
+
     @staticmethod
     def _sanitize_prompt(prompt):
         """
@@ -396,6 +400,53 @@ class StoryBoardPrompt:
         return sections
 
     @staticmethod
+    def get_all_pos(prompt) -> dict:
+        """
+        Given a prompt, returns a dictionary containing the POS of all the words in the prompt.
+
+        Args:
+        prompt (str): The prompt to be processed.
+
+        Returns:
+        dict: A dictionary containing the words and their corresponding POS.
+
+        Examples:
+        >>> StoryBoardPrompt.get_all_pos("This is a test.")
+        {'This': 'PRON', 'is': 'AUX', 'a': 'DET', 'test': 'NOUN'}
+
+        >>> StoryBoardPrompt.get_all_pos("The quick brown fox jumps over the lazy dog.")
+        {'The': 'DET', 'quick': 'ADJ', 'brown': 'ADJ', 'fox': 'NOUN', 'jumps': 'VERB', 'over': 'ADP', 'the': 'DET', 'lazy': 'ADJ', 'dog': 'NOUN'}
+        """
+        nlp = spacy.load("en_core_web_sm")
+        nlp_prompt = nlp(remove_all_but_words(prompt))
+        words = {}
+        for token in nlp_prompt:
+            words[str(token)] = token.pos_
+        return words
+
+    @staticmethod
+    def get_word_pos(word) -> str:
+        """
+        Given a word, returns its POS.
+
+        Args:
+        word (str): The word to be processed.
+
+        Returns:
+        str: The POS of the given word.
+
+        Examples:
+        >>> StoryBoardPrompt.get_word_pos("quick")
+        'ADJ'
+
+        >>> StoryBoardPrompt.get_word_pos("dog")
+        'NOUN'
+        """
+        nlp = spacy.load("en_core_web_sm")
+        sp_word = nlp(word)
+        return sp_word[0].pos_
+
+    @staticmethod
 
     #
     #     # Compute the sinusoidal weights as a function of linear weight y=(sin(X*pi*10*2)+1)/2 where X== linear weight
@@ -412,33 +463,33 @@ class StoryBoardPrompt:
         :param percent: float representing the percentage of the section that has been traversed
         :return: float representing the weight of the word
 
-        >>> while True:
-        ...     test_obj = StoryBoardPrompt("doctests", [.5,.5])
-        ...     percent_values = np.linspace(0, 1, 1000)
-        ...     weights = [[test_obj._get_word_weight_at_percent(test_obj._sections[0], word_index=i, percent=p) for p in percent_values] for i in range(2)]
-        ...     plt.plot(percent_values, weights[0])
-        ...     plt.plot(percent_values, weights[1])
-        ...     plt.xlabel('Percent')
-        ...     plt.ylabel('Weight')
-        ...     plt.title('Word weight over section traversal')
-        ...     plt.show() #doctest: +SKIP
-        ...     break
-        >>> plt.close()
-        """
-        pass
+
+        >>> test_obj = StoryBoardPrompt("doctests", [.5,.5])
+        >>> percent_values = np.linspace(0, 1, 1000)
+        >>> weights = [[test_obj._get_word_weight_at_percent(test_obj._sections[0], word_index=i, percent=p) for p in percent_values] for i in range(2)]
+        >>> plt.plot(percent_values, weights[0])
+        >>> plt.plot(percent_values, weights[1])
+        >>> plt.xlabel('Percent')
+        >>> plt.ylabel('Weight')
+        >>> plt.title('Word weight over section traversal')
+        >>> plt.show()
+
+       """
 
         curr_word = section[0][word_index][0] # word text
-          # word text
-        start_weight = section[0][word_index][1] # word weight
-        end_weight = section[1][word_index][1]
-        # Compute the transition weight as a linear interpolation between the start and end weights
-        linear_weight = start_weight + percent * (end_weight - start_weight)
-        # Compute the cosinusoidal weights as a function of linear weight
-        frequency = 3
-        amplitude = -1/10 # -1 to 1
-        cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (abs(amplitude))
-
-        return cosinusoidal_weight if curr_word == curr_word else linear_weight
+        action_list = ['NOUN', 'ADJ', 'VERB', 'ADV']
+        pos = StoryBoardPrompt.get_word_pos(curr_word) #temporary... will only do this once per prompt
+        if pos in action_list:
+            start_weight = section[0][word_index][1] # word weight
+            end_weight = section[1][word_index][1]
+            # Compute the transition weight as a linear interpolation between the start and end weights
+            linear_weight = start_weight + percent * (end_weight - start_weight)
+            # Compute the cosinusoidal weights as a function of linear weight
+            frequency = 3
+            amplitude = -1/10 # -1 to 1
+            cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (abs(amplitude))
+            return cosinusoidal_weight
+        return linear weight #(or 0)
 
     @staticmethod
     def _get_frame_values_for_prompt_word_weights(sections,
