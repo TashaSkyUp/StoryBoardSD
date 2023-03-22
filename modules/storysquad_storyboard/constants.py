@@ -1,3 +1,4 @@
+
 # this is a 592-word story from chatgpt "please write a 500 word story for a child aged 10"
 long_story_test_prompt = """Once upon a time, there was a small village nestled in the heart of a lush forest. The villagers 
 lived a simple life, tending to their farms and livestock, and enjoying the peace and tranquility of their 
@@ -810,4 +811,11 @@ short_story_sb_prompt3 = "(Once:0.5374819817998283) (upon:0.7613739065522899) (a
                          "any:1.2958584741333998) (obstacle:0.5860267975586586) (and:0.9495357299285635) (" \
                          "finding:1.4094980372950034) (your:1.265695134426793) (way:1.3721465262820804) (" \
                          "back:0.897779412036581) (home.:0.6827491583091284) "
-short_story_test_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover"
+short_story_test_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover deformed " \
+                              "eyes, ((makeup)) close up, ((disfigured)),((bad art)),((deformed)),((extra limbs))," \
+                              "((duplicate)),((morbid)),((mutilated)), out of frame, mutated hands, poorly drawn " \
+                              "eyes,((poorly drawn hands)),((poorly drawn face)),(((mutation))),((ugly)), blurry," \
+                              " ((bad anatomy)),(((bad proportions))), cloned face, body out of frame," \
+                              " ((missing arms)), ((missing legs)), (((extra arms))), ((( extra legs))), " \
+                              "(fused fingers), (too many fingers), (((long neck))) tiling, poorly drawn, " \
+                              "cross-eye, canvas frame, frame, cartoon, 3d, weird colors"
