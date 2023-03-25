@@ -10,7 +10,10 @@ STORYBOARD_API_MODEL_PATH = os.getenv("STORYBOARD_API_MODEL_PATH", "model.ckpt")
 STORYBOARD_RENDER_SERVER_URLS = \
     os.getenv("STORYBOARD_RENDER_SERVER_URLS",
               ["http://127.0.0.1:7861/sdapi/v1/txt2img",
-               "http://127.0.0.1:7862/sdapi/v1/txt2img"])
+               #"http://127.0.0.1:7862/sdapi/v1/txt2img",
+               #"http://127.0.0.1:7863/sdapi/v1/txt2img",
+               #"http://127.0.0.1:7864/sdapi/v1/txt2img",
+               ])
 
 STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "app")
 # STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "sd_server")
