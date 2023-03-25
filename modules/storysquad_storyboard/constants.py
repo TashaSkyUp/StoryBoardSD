@@ -1,4 +1,6 @@
 # this is a 592-word story from chatgpt "please write a 500 word story for a child aged 10"
+import json
+
 long_story_test_prompt = """Once upon a time, there was a small village nestled in the heart of a lush forest. The villagers 
 lived a simple life, tending to their farms and livestock, and enjoying the peace and tranquility of their 
 surroundings. However, there was one thing that always troubled them - every year, the village was plagued by a 
@@ -811,3 +813,18 @@ short_story_sb_prompt3 = "(Once:0.5374819817998283) (upon:0.7613739065522899) (a
                          "finding:1.4094980372950034) (your:1.265695134426793) (way:1.3721465262820804) (" \
                          "back:0.897779412036581) (home.:0.6827491583091284) "
 short_story_test_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover"
+
+small_quick_test_prompt_base = "(The:) (quick:) (brown:) (fox:) (jumps:) (over:) (the:) (lazy:) (dog:)"
+small_quick_test_prompt1 = " ".join([w.replace(':',":"+str((i/9))) for i,w in enumerate(small_quick_test_prompt_base.split(" "))])
+small_quick_test_prompt2 = " ".join([w.replace(':',":"+str(0.5)) for i,w in enumerate(small_quick_test_prompt_base.split(" "))])
+small_quick_test_prompt3 = " ".join([w.replace(':',":"+str(1-(i/9))) for i,w in enumerate(small_quick_test_prompt_base.split(" "))])
+small_quick_test_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover amateure plain " \
+                              "boring "
+
+test_img_info = json.loads('{"parameters": "(A:1.0389916936335184) (robot:0.9737987777913438)\\nNegative prompt: '
+                           'confusing amateur strange odd ugly mutant '
+                           'disfigured blurry random meme simple bland poor composition toy cartoon '
+                           'photograph\\nSteps: 5, Sampler: DPM2 Karras, CFG scale: 7.0, Seed: 627932877, '
+                           'Size: 512x512, Model hash: 88ecb78256, Variation seed: -1, Variation seed strength: \\"['
+                           '0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]\\", Seed resize from: -1x-1, '
+                           'Denoising strength: 0.75"}')
