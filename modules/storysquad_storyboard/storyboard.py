@@ -317,7 +317,7 @@ class StoryBoardPrompt:
                                    self._sanitized_prompts]
         self.nlp = spacy.load("en_core_web_sm")
         self.nlp_prompts =[self.nlp(remove_all_but_words(p)) for p in self._sanitized_prompts]
-        self.prompt_pos_dict = self.get_all_pos()  # Creates a dict to reference each POS for current prompt
+        self.prompt_pos_dicts = self.get_all_pos()  # Creates a dict to reference each POS for current prompt
 
         if use_only_nouns:
             self._words_and_weights = [self._get_nouns_only(p) for p in self._words_and_weights]
@@ -366,7 +366,7 @@ class StoryBoardPrompt:
         for item in self.nlp_prompts:
             pos_dict = {}
             for token in item:
-                pos_dict[str(token)] = token.pos_
+                pos_dict[str(token)] = token.pos_ #creates a Key : Element pair of each word in the prompt and it's pos
             outlist.append(pos_dict)
         return outlist
 
@@ -382,13 +382,13 @@ class StoryBoardPrompt:
 
         Examples:
         >>> SB = StoryBoardPrompt("doctests", [.5,.5])
-        >>> SB.get_word_pos("quick")
-        'ADJ'
-
+        >>> SB.get_word_pos("cat")
+        'NOUN'
         >>> SB.get_word_pos("dog")
         'NOUN'
+
         """
-        pos = self.prompt_pos_dict[word]
+        pos = self.prompt_pos_dicts[0][word] #fist prompt_pos_dict in list. (currently always the same)
         return pos
 
     @staticmethod
@@ -482,7 +482,7 @@ class StoryBoardPrompt:
         curr_word = section[0][word_index][0]  # word text
         action_list = ['NOUN', 'ADJ', 'VERB', 'ADV']
 
-        pos = self.prompt_pos_dict[0][curr_word]  #fist prompt in list. (currently always the same)
+        pos = self.get_word_pos(curr_word)
         if pos in action_list:
             start_weight = section[0][word_index][1]  # word weight
             end_weight = section[1][word_index][1]
