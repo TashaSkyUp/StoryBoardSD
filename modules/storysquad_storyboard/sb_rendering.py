@@ -13,7 +13,7 @@ from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_
 from modules.storysquad_storyboard.constants import *
 
 GTTS_SAMPLE_RATE = 24000.0
-MAX_BATCH_SIZE = 9
+MAX_BATCH_SIZE = 12
 NUM_SB_IMAGES = 3
 
 
@@ -875,7 +875,7 @@ class SBMultiSampleArgs:
 
     @property
     def hyper(self):
-        if self._length == 1:
+        if self._length == 1 :
             # if there is only one hyper param, return it
             return self._hyper[0]
         else:

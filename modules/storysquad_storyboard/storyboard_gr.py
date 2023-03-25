@@ -218,17 +218,63 @@ class StoryBoardGradio:
             self.StSqUI = wrapped_ui
             self.get_story_squad_ui = lambda: self.StSqUI
             self.setup_story_board_events()
-    def drag_image_in(self, idx, img, all_state, prompt,negative_prompt):
+    def drag_image_in(self, idx, img, all_state, ui_prompt, negative_prompt):
+        """
+        This function drags an image into a Gradio application and updates the state of the storyboard based on the image's parameters.
+
+        Args:
+        idx (int): The index at which the image will be inserted into the storyboard.
+        img (PIL.Image): The image to be inserted into the storyboard.
+        all_state (dict): The current state of the storyboard.
+        prompt (str): The current prompt text.
+        negative_prompt (str): The current negative prompt text.
+
+        Returns:
+        tuple: A tuple containing the updated state of the storyboard, the inserted image, the updated prompt text, and the updated negative prompt text.
+
+        Raises:
+        Exception: If the index is out of range for the storyboard.
+
+        ...
+        Example:
+        >>> from unittest.mock import MagicMock # doctest: +NORMALIZE_WHITESPACE
+        >>> class MockStoryBoardGradio(StoryBoardGradio):
+        ...     def __init__(self):
+        ...         self.drag_image_in = lambda a, b, c, d, e: StoryBoardGradio.drag_image_in(self, a, b, c, d, e)
+        ...         StoryBoardGradio.__init__ = MagicMock(return_value=None)
+        ...         StoryBoardGradio.__init__(self)
+        >>> sb = MockStoryBoardGradio()
+        >>> idx = 0
+        >>> from PIL import Image
+        >>> img = Image.new('RGB', (50, 50), color='white')  # Creating a blank white image
+        >>> img.info=test_img_info
+        >>> all_state = {"story_board": [SBIHyperParams(), SBIHyperParams(), SBIHyperParams()]}
+        >>> prompt = "Once upon a time..."
+        >>> neg_prompt = "Do not use any magic."
+        >>> upd_state, upd_img, upd_prompt, upd_neg_prompt = sb.drag_image_in(idx, img, all_state, prompt, neg_prompt)
+        >>> upd_state["story_board"][idx]._prompt
+        ['(A:1.0389916936335184) (robot:0.9737987777913438)']
+        >>> len(upd_state["story_board"]) == 3
+        True
+        >>> upd_state["story_board"][idx]._prompt
+        ['(A:1.0389916936335184) (robot:0.9737987777913438)']
+        >>> upd_prompt
+        'A robot'
+        >>> upd_neg_prompt
+        'confusing amateur strange odd ugly mutant disfigured blurry random meme simple bland poor composition toy cartoon photograph'
+        """
+
+
         import gradio as gr
         new_prompt = None
         if img and "parameters" in img.info.keys():
-            print(img.info)
+            #print(img.info)
             params = img.info["parameters"]
-            params_split= params.splitlines()
+            params_split = params.splitlines()
             new_prompt = params_split[0]
 
             if len(params_split) == 3:
-                negative_prompt = params_split[1].split("Negative prompt:")[1]
+                negative_prompt = params_split[1].split("Negative prompt: ")[1]
             else:
                 negative_prompt = negative_prompt
 
@@ -237,12 +283,17 @@ class StoryBoardGradio:
             if bracket_idx > 0:
                 brkt2 = part3.find("]\"")
                 brktd = part3[bracket_idx:brkt2+2]
-                part3 = part3.replace(brktd, "[0]")
+                vals = eval(eval(brktd))
+                part3 = part3.replace(brktd, f"[{vals[0]}]")
             ps = part3.split(",")
             params={}
             for i in ps:
-                k, v = i.split(":")
-                params[k.strip()] = v
+                try:
+                    k, v = i.split(":")
+                    params[k.strip()] = v
+                except:
+                    raise Exception(f"Could not parse {i} in {part3}")
+
             sbih = SBIHyperParams()
             sbih.prompt = new_prompt
             sbih.negative_prompt = negative_prompt
@@ -256,20 +307,21 @@ class StoryBoardGradio:
                 sbih.subseed = -1
                 sbih.subseed_strength = 0.0
 
-            sbih.cfg_scale = int(params["CFG scale"])
+            sbih.cfg_scale = float(params["CFG scale"])
 
             if idx < len(all_state["story_board"]):
-                # this may be incorrect
                 all_state["story_board"][idx] = sbih
+            elif all_state["story_board"]==[]:
+                all_state["story_board"]=[sbih]+[None] * (NUM_SB_IMAGES-1)
             else:
-                all_state["story_board"].append(sbih)
+                raise Exception(f"index {idx} is out of range for story board")
 
-        if prompt==new_prompt or new_prompt is None:
+        if ui_prompt==new_prompt or new_prompt is None:
             out_prompt =gr.Textbox.update()
         else:
             #out_prompt = " ".join([i.split(":")[0][1:] for i in new_prompt.split(" ")])
             from modules.storysquad_storyboard.storyboard import get_prompt_words_list
-            out_prompt = get_prompt_words_list(new_prompt)
+            out_prompt = get_prompt_words_list(new_prompt,punc=True)
             out_prompt =" ".join(out_prompt)
         return all_state,img,out_prompt,negative_prompt
 
@@ -281,15 +333,17 @@ class StoryBoardGradio:
 
         if len(all_state["story_board"]) > 0:
             new_prompt = state[self.comp_helper.prompt]
-            old_prompt = all_state["story_board"][0].prompt
+            new_prompt = get_prompt_words_list(new_prompt,punc=True)
+            new_prompt =" ".join(new_prompt)
 
-            old_prompt = get_prompt_words_list(old_prompt)
+            old_prompt = all_state["story_board"][0].prompt
+            old_prompt = get_prompt_words_list(old_prompt,punc=True)
             old_prompt =" ".join(old_prompt)
 
             if new_prompt==old_prompt:
                 return {self.all_state: all_state}
 
-        all_state["story_board"] = []
+        all_state["story_board"] = [None]*NUM_SB_IMAGES
         all_state["history"] = []
         all_state["im_explorer_hparams"] = []
         sb_imgs = []
@@ -471,13 +525,13 @@ class StoryBoardGradio:
         o = [str(i) for i in h_params]
         return o
 
-    def render_explorer(self, params: SBMultiSampleArgs):
+    async def render_explorer(self, params: SBMultiSampleArgs):
         # calls self.storyboard with the params
         # returns a list of images, and a list of params
         # this is the function that is called by the image explorer
         # it is called with a SBMultiSampleArgs object
 
-        results: SBImageResults = self.storyboard(params, 0)
+        results: SBImageResults = await self.storyboard(params, 0)
         out_image_exp_params = results.img_hyper_params_list[-9:]
         return results.all_images[-9:], out_image_exp_params[-9:]
 
@@ -499,7 +553,7 @@ class StoryBoardGradio:
 
         return (all_state,vo)
 
-    def record_and_render(self, all_state, idx, vote_category: int, *ui_param_state):
+    async def record_and_render(self, all_state, idx, vote_category: int, *ui_param_state):
         # TODO: use this in on_generate
         #       Going to need to create a new explorer model that uses the ui_param_state to generate random h_params
 
@@ -508,17 +562,17 @@ class StoryBoardGradio:
         render_params = self.get_sb_multi_sample_params_from_ui(ui_param_state).render
         render_params.batch_size = MAX_IEXP_SIZE
         render_call_args = self.explore(render_params, all_state["history"], SimpleExplorerModel())
-        image_results, all_state["im_explorer_hparams"] = self.render_explorer(render_call_args)
+        image_results, all_state["im_explorer_hparams"] = await self.render_explorer(render_call_args)
 
         return all_state, *image_results, *[i.__dict__ for i in all_state["im_explorer_hparams"]]
 
-    def on_upvote(self, idx, all_state, *ui_param_state):
-        return self.record_and_render(all_state, idx, 1, *ui_param_state)
+    async def on_upvote(self, idx, all_state, *ui_param_state):
+        return await self.record_and_render(all_state, idx, 1, *ui_param_state)
 
-    def on_downvote(self, idx, all_state, *ui_param_state):
-        return self.record_and_render(all_state, idx, 2, *ui_param_state)
+    async def on_downvote(self, idx, all_state, *ui_param_state):
+        return await self.record_and_render(all_state, idx, 2, *ui_param_state)
 
-    def on_promote(self, idx, all_state, *args):
+    async def on_promote(self, idx, all_state, *args):
         # general pattern:
         # 1. update the params history
         # 2. move the image to the correct position in the storyboard
@@ -533,11 +587,11 @@ class StoryBoardGradio:
             story_board_images: [] = list(args[:3])
             cell_params = all_state["im_explorer_hparams"][idx]
             render_params = self.get_sb_multi_sample_params_from_ui(ui_state_comps).render
-            sb_idx: int = len(all_state["story_board"])
+            sb_idx: int = all_state["story_board"].index(None)
 
         if "set simple params":
             all_state["history"].append((cell_params, 4))
-            all_state["story_board"].append(cell_params)
+            all_state["story_board"][sb_idx]=cell_params
 
         if "handle the storyboard first":
             # render the new storyboard image
@@ -545,7 +599,7 @@ class StoryBoardGradio:
             call_args.hyper = cell_params
             call_args.render.batch_size = 1
             # re-render the storyboard image
-            sb_result = self.storyboard(call_args, 0)
+            sb_result = await self.storyboard(call_args, 0)
             # update story_board_images
             story_board_images[sb_idx] = sb_result.all_images[0]
 
@@ -554,7 +608,7 @@ class StoryBoardGradio:
 
         if "handle the regeneration of the explorer second but only if the storyboard is not complete":
             if len(all_state["story_board"]) < NUM_SB_IMAGES:
-                tmp = list(self.on_generate(all_state, *ui_state_comps))
+                tmp = list(await self.on_generate(all_state, *ui_state_comps))
                 all_state, tmp = tmp[0], tmp[1:]
                 exp_images, tmp = tmp[:9], tmp[9:]
                 exp_texts, _ = tmp[:9], tmp[9:]
@@ -597,7 +651,7 @@ class StoryBoardGradio:
         )
         return sb_image
 
-    def on_generate(self, all_state, *ui_param_state):
+    async def on_generate(self, all_state, *ui_param_state):
         """
         generates the first series of images for the user to explore, clears the history, and returns the new params
         :param all_state: the state of the app
@@ -605,7 +659,7 @@ class StoryBoardGradio:
         :return: the new state of the app, the new storyboard images, the new image explorer images, the new image explorer text
         """
 
-        def get_random_params_and_images(base_params: SBMultiSampleArgs):
+        async def get_random_params_and_images(base_params: SBMultiSampleArgs):
             """
             generates a set of random parameters and renders the images for the image explorer
             """
@@ -641,12 +695,6 @@ class StoryBoardGradio:
             run_test = False
             out_call_args: SBMultiSampleArgs = SBMultiSampleArgs(render=base_params._render, hyper=[])
 
-            if base_params.hyper[0].prompt is None or base_params.hyper[0].prompt == "" or base_params.hyper[0].prompt == []:
-                run_test = True
-                print("running test")
-                base_params._hyper[0].prompt = "this is a test prompt that jumped over a lazy dog and then ran away"
-                base_params._hyper[0].negative_prompt = "(mutant :1.2) (confusing :1.2) blurry strange odd two heads (amature:1.2) person (meme:1.2)"
-
             for i in range(MAX_IEXP_SIZE):
                 tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
                 tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
@@ -659,7 +707,8 @@ class StoryBoardGradio:
 
             sb_image_results: SBImageResults = self.storyboard(out_call_args.combined)
 
-            out_images = sb_image_results.all_images
+            out_images = await sb_image_results
+            out_images = out_images.all_images
 
             # remove the image grid from the result if it exists
             if len(out_images) != MAX_IEXP_SIZE:
@@ -669,7 +718,8 @@ class StoryBoardGradio:
 
         sb_msp = self.get_sb_multi_sample_params_from_ui(ui_param_state)
 
-        images_out, params = get_random_params_and_images(sb_msp)
+        res =  await get_random_params_and_images(sb_msp)
+        images_out, params = res
         params:[SBIHyperParams] = params
         text_out = self.update_image_exp_text(params)
         all_state["im_explorer_hparams"] = params
@@ -1232,6 +1282,19 @@ class StorySquadExtraGradio(StoryBoardGradio):
             last_state = json.load(f)
         return StorySquadExtraGradio.dict_to_all_state(last_state)
 
+import unittest
+class TestStoryboardGradio(unittest.TestCase):
+    @staticmethod
+    def test_drag_image_in():
+        from modules.storysquad_storyboard.storyboard import SBIHyperParams
+
+        sb = StoryBoardGradio()
+        idx = 3
+        img = Image.new('RGB', (50, 50), color='white')  # Creating a blank white image
+        all_state = {"story_board": [SBIHyperParams(), SBIHyperParams(), SBIHyperParams()]}
+        prompt = "Once upon a time..."
+        negative_prompt = "Do not use any magic."
+        updated_state, updated_img, updated_prompt, updated_negative_prompt = sb.drag_image_in(idx, img, all_state, prompt, negative_prompt)
 
 if __name__ == '__main__':
     import doctest
@@ -1240,5 +1303,19 @@ if __name__ == '__main__':
     import numpy as np
     from typing import List
     from collections import OrderedDict
+    from modules.storysquad_storyboard.storyboard import SBIHyperParams
 
+    from PIL import Image
+    from unittest.mock import MagicMock
+    class MockStoryBoardGradio(StoryBoardGradio):
+        def __init__(self):
+            self.drag_image_in = StoryBoardGradio.drag_image_in
+
+
+    StoryBoardGradio.__init__ = MagicMock(return_value=None)
+
+    unittest.main()
     doctest.run_docstring_examples(StorySquadExtraGradio.on_render_storyboard, globals(), verbose=True)
+
+
+

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import random
 from typing import Any
@@ -15,6 +16,9 @@ from modules.api.models import StableDiffusionTxt2ImgProcessingAPI
 import requests
 import json
 from .env import *
+
+global wrap_around
+wrap_around = 0
 
 
 def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleArgs):
@@ -121,6 +125,12 @@ def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImage
 
 
 async def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -> SBImageResults:
+    global wrap_around
+    if wrap_around == len(STORYBOARD_RENDER_SERVER_URLS) - 1:
+        wrap_around = 0
+    else:
+        wrap_around = wrap_around + 1
+
     p = get_sd_txt_2_image_params_from_story_board_params(params)
 
     p.scripts = modules.scripts.scripts_txt2img
@@ -131,22 +141,8 @@ async def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -
             p.seed[i] = modules.processing.get_fixed_seed(-1)
     p.do_not_save_samples = True
 
-    try:
-        # Choose a random server URL from the list
-        server_url = random.choice(STORYBOARD_RENDER_SERVER_URLS)
-        processed = await call_json_api_endpoint_2(url=server_url, data=p)
-    except Exception as e:
-        print(e)
-        # try to process each prompt separately this will fail if running UI only
-        results = []
-        for i in range(len(params.combined.hyper.prompt)):
-            try:
-                sbim = params[i]
-                p = get_sd_txt_2_image_params_from_story_board_params(sbim)
-                results.append(process_images(p))
-            except Exception as e:
-                print(e)
-                results.append(None)
+    server_url = STORYBOARD_RENDER_SERVER_URLS[wrap_around]
+    processed = await call_json_api_endpoint_async(url=server_url, data=p)
 
     shared.total_tqdm.clear()
     generation_info_js = processed["parameters"]
@@ -186,7 +182,7 @@ def call_json_api_endpoint(url, data):
     return rj
 
 
-async def call_json_api_endpoint_2(url: str, data: Any) -> dict:
+async def call_json_api_endpoint_async(url: str, data: Any) -> dict:
     headers = {'content-type': 'application/json'}
     if isinstance(data, StableDiffusionProcessingTxt2Img):
         data = vars(data)
@@ -194,7 +190,8 @@ async def call_json_api_endpoint_2(url: str, data: Any) -> dict:
         data.pop("script_args")
         data.pop("s_tmax")
 
-    timeout = httpx.Timeout(60.0)  # Set the read timeout to 60 seconds
+    timeout = httpx.Timeout(300.0)  # Set the read timeout to 5 minutes
+
     async with httpx.AsyncClient(timeout=timeout) as client:
         res = await client.post(url=url,
                                 data=json.dumps(data),

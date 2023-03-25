@@ -49,7 +49,8 @@ class UniqueList:
 
     def __getitem__(self, index):
         return self._list[index]
-
+    def __iter__(self):
+        return iter(self._list)
     def __setitem__(self, index, value):
         if value not in self._set:
             self._set.discard(self._list[index])
@@ -174,7 +175,7 @@ def get_frame_seed_data(board_params, _num_frames) -> [()]:  # List[(seed,subsee
     return all_frames
 
 
-def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
+def get_prompt_words_and_weights_list(prompt,punc=False) -> List[List[str]]:
     """
     >>> get_prompt_words_and_weights_list("hello:1 world:.2 how are (you:1.0)")
     [('hello', 1.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
@@ -196,7 +197,7 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
     [('hello', 5.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     """
     if prompt == "": raise ValueError("prompt cannot be empty")
-    prompt = sanitize_prompt(prompt)
+    prompt = sanitize_prompt(prompt,punc=punc)
     words = prompt.split(" ")
     possible_word_weight_pairs = [i.split(":") for i in words]
     w = 1.0
@@ -225,12 +226,12 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
     return out
 
 
-def get_prompt_words_list(prompt):
-    out = [i[0] for i in get_prompt_words_and_weights_list(prompt)]
+def get_prompt_words_list(prompt,punc=False):
+    out = [i[0] for i in get_prompt_words_and_weights_list(prompt,punc=punc)]
     return out
 
 
-def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
+def get_prompt_words_and_weights_list_new(prompt,punc=False) -> List[List[str]]:
     """
     >>> get_prompt_words_and_weights_list_new("")
     []
@@ -245,7 +246,7 @@ def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
     >>> get_prompt_words_and_weights_list_new("hello:5 (world:0.2) how (are) you")
     [('hello', 5.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     """
-    prompt = sanitize_prompt(prompt)
+    prompt = sanitize_prompt(prompt,punc)
     words = prompt.split(" ")
     possible_word_weight_pairs = [i.split(":") for i in words]
     return [
@@ -257,8 +258,10 @@ def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
     ]
 
 
-def sanitize_prompt(prompt):
-    prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
+def sanitize_prompt(prompt,punc=False):
+
+    if not punc:
+        prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
     prompt = prompt.replace("\n", " ")
     prompt = prompt.replace("\r", " ")
     prompt = prompt.replace("\t", " ")
@@ -376,24 +379,33 @@ class StoryBoardPrompt:
     ['(dog:1.00000000)(cat:1.00000000)']
     """
 
-    def __init__(self, prompts: List[str] or str, seconds_lengths: List[float], use_only_nouns=False):
+    def __init__(self, prompts: List[str] or str,
+                 seconds_lengths: List[float],
+                 use_only_nouns=False,
+                 start_time=0.0):
+
         self.noun_list = _get_noun_list()
 
         self._prompts = prompts
         if isinstance(seconds_lengths, list):
             self.seconds_lengths = seconds_lengths
             self.total_seconds = sum(seconds_lengths)
+            self.start_time = start_time
         elif isinstance(seconds_lengths, numbers.Number):
             secs_per_prompt = seconds_lengths / (len(prompts) - 1)
             self.seconds_lengths = [secs_per_prompt] * (len(prompts) - 1)
             self.total_seconds = seconds_lengths
+            self.start_time = start_time
 
         self._testing_dirty_prompts = [
             "dog :1 cat:0.0",
             "dog :1. cat:1.0",
             "dog :0. cat: 1",
         ]
-        self._times_sections_start = [sum(self.seconds_lengths[:i]) for i in range(len(self.seconds_lengths))]
+        self._times_sections_start = [
+            sum(self.seconds_lengths[:i])+ self.start_time
+            for i in range(len(self.seconds_lengths))
+        ]
 
         if prompts == "doctests":
             self._prompts = self._testing_dirty_prompts
@@ -464,7 +476,7 @@ class StoryBoardPrompt:
             new_section_lengths = [stop_time - start_time]
         else:
             new_section_lengths = [new_start_section_length] + new_section_lengths + [new_end_section_length]
-        ret = StoryBoardPrompt(helix_point_prompts, new_section_lengths)
+        ret = StoryBoardPrompt(helix_point_prompts, new_section_lengths,start_time=start_time)
         return ret
 
     @staticmethod
@@ -616,7 +628,7 @@ class StoryBoardPrompt:
 
         if seconds < 0:
             raise ValueError("seconds cannot be less than 0")
-        if seconds > self.total_seconds:
+        if seconds > (self.total_seconds+self.start_time):
             raise ValueError("seconds cannot be greater than the total time of the storyboard")
 
         # find the section that the seconds is in using self._times_sections_start
@@ -817,14 +829,16 @@ class StoryBoardSeed:
         elif isinstance(seeds[0], Interpolatable) and isinstance(times[0], Interpolatable):
             self.interop_seeds = seeds
             self.time_sections = times
-            if len(seeds) == len(times) + 1:
+            if len(seeds) == len(times)+1 :
                 # create the interpolatable sections
                 self.interpolatable_sections = []
-                for i in range(len(self.interop_seeds) - 1):
+                for i in range(len(self.time_sections)):
                     self.interpolatable_sections.append(
                         StoryBoardSeed.InterpolatableSection(self.interop_seeds[i], self.interop_seeds[i + 1],
                                                              self.time_sections[i])
                     )
+            else:
+                raise ValueError("times is the wrong size")
             self.times = {tm.x for tm in self.time_sections}
             pass
         else:
@@ -1028,7 +1042,8 @@ class StoryBoardSeed:
 
             new_times[-1].y = stop_time
             new_times[-1].x = new_times[-2].y
-
+            # remove time sections that have 0 length
+            new_times = [t for t in new_times if t.x != t.y]
             for tm in new_times:
                 seedx = self.get_seed_at_time(tm.x)
                 seedy = self.get_seed_at_time(tm.y)
