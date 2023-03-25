@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import spacy
 import re
 
-
 DEV_MODE = os.getenv("STORYBOARD_DEV_MODE", "False") == "True"
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
@@ -172,7 +171,7 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
             w = 1.0
         # if the length of the item that is possibly a word weight pair is 2 then it is a word and a weight
         elif value_count == 2:  # then there is a word and probably a weight in the tuple
-            if len(word_weight_pair[1]) == 0: # weight is empty
+            if len(word_weight_pair[1]) == 0:  # weight is empty
                 w = 1.0
             else:
                 # if the second item in the word weight pair is a float then it is a weight
@@ -188,9 +187,11 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
         out.append((word_weight_pair[0], w))
     return out
 
+
 def get_prompt_words_list(prompt):
     out = [i[0] for i in get_prompt_words_and_weights_list(prompt)]
     return out
+
 
 def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
     """
@@ -218,6 +219,7 @@ def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
         if word_weight_pair[0] != ""
     ]
 
+
 def sanitize_prompt(prompt):
     prompt = prompt.replace(",", " ").replace(". ", " ").replace("?", " ").replace("!", " ").replace(";", " ")
     prompt = prompt.replace("\n", " ")
@@ -232,15 +234,24 @@ def sanitize_prompt(prompt):
     prompt = prompt.replace("(", "").replace(")", "")
     return prompt.strip()
 
-def remove_all_but_words(prompt) -> str:
-        """
+
+def remove_all_but_words(prompt):
+    """
         >>> remove_all_but_words("Get :1.2 busy:1. living:0.4 or:0 get: 0 busy:0 dying:0.6.")
         'Get busy living or get busy dying'
+        >>> remove_all_but_words(["Get :1.2 busy:1. living:0.4 or:0 get: 0 busy:0 dying:0.6.","Get :1.2 busy:1. living:0.4 or:0 get: 0 busy:0 dying:0.6."])
+        ['Get busy living or get busy dying', 'Get busy living or get busy dying']
         """
+    if isinstance(prompt, list):
+        res = []
+        for p in prompt:
+            res.append(remove_all_but_words(p))
+    else:
         chars = re.compile('[^a-zA-Z\s]+')
         clean = chars.sub(' ', prompt)
-        words = ' '.join(clean.split()).strip()
-        return words
+        res = ' '.join(clean.split()).strip()
+
+    return res
 
 
 from typing import List, Tuple
@@ -251,8 +262,6 @@ def _get_noun_list() -> List[str]:
     with open("nounlist.csv", 'r') as f:
         noun_list = f.read().splitlines()
     return noun_list
-
-
 
 
 class StoryBoardPrompt:
@@ -283,9 +292,6 @@ class StoryBoardPrompt:
     def __init__(self, prompts: List[str] or str, seconds_lengths: List[float], use_only_nouns=False):
 
         self.noun_list = _get_noun_list()
-        self.nlp = spacy.load("en_core_web_sm")
-
-
         self._prompts = prompts
         if isinstance(seconds_lengths, list):
             self.seconds_lengths = seconds_lengths
@@ -309,6 +315,10 @@ class StoryBoardPrompt:
 
         self._words_and_weights = [self._get_prompt_words_and_weights_list(p) for p in
                                    self._sanitized_prompts]
+        self.nlp = spacy.load("en_core_web_sm")
+        self.nlp_prompts =[self.nlp(remove_all_but_words(p)) for p in self._sanitized_prompts]
+        self.prompt_pos_dict = self.get_all_pos()  # Creates a dict to reference each POS for current prompt
+
         if use_only_nouns:
             self._words_and_weights = [self._get_nouns_only(p) for p in self._words_and_weights]
 
@@ -333,7 +343,53 @@ class StoryBoardPrompt:
         except IndexError:
             raise TypeError("args must be a float or a list of floats")
 
+    def get_all_pos(self) -> dict:
+        """
+        Given a prompt, returns a dictionary containing the POS of all the words in the prompt.
 
+        Args:
+        prompt (str): The prompt to be processed.
+
+        Returns:
+        dict: A dictionary containing the words and their corresponding POS.
+
+        Examples:
+        >>> SB = StoryBoardPrompt("doctests", [.5,.5])
+        >>> SB.get_all_pos()
+        [{'dog': 'NOUN', 'cat': 'NOUN'}, {'dog': 'NOUN', 'cat': 'NOUN'}, {'dog': 'NOUN', 'cat': 'NOUN'}]
+
+        >>> SB.get_all_pos()
+        [{'dog': 'NOUN', 'cat': 'NOUN'}, {'dog': 'NOUN', 'cat': 'NOUN'}, {'dog': 'NOUN', 'cat': 'NOUN'}]
+        """
+        outlist = []
+
+        for item in self.nlp_prompts:
+            pos_dict = {}
+            for token in item:
+                pos_dict[str(token)] = token.pos_
+            outlist.append(pos_dict)
+        return outlist
+
+    def get_word_pos(self, word) -> str:
+        """
+        Given a word, returns its POS.
+
+        Args:
+        word (str): The word to be processed.
+
+        Returns:
+        str: The POS of the given word.
+
+        Examples:
+        >>> SB = StoryBoardPrompt("doctests", [.5,.5])
+        >>> SB.get_word_pos("quick")
+        'ADJ'
+
+        >>> SB.get_word_pos("dog")
+        'NOUN'
+        """
+        pos = self.prompt_pos_dict[word]
+        return pos
 
     @staticmethod
     def _sanitize_prompt(prompt):
@@ -399,62 +455,9 @@ class StoryBoardPrompt:
         ]
         return sections
 
-    @staticmethod
-    def get_all_pos(prompt) -> dict:
-        """
-        Given a prompt, returns a dictionary containing the POS of all the words in the prompt.
 
-        Args:
-        prompt (str): The prompt to be processed.
 
-        Returns:
-        dict: A dictionary containing the words and their corresponding POS.
-
-        Examples:
-        >>> StoryBoardPrompt.get_all_pos("This is a test.")
-        {'This': 'PRON', 'is': 'AUX', 'a': 'DET', 'test': 'NOUN'}
-
-        >>> StoryBoardPrompt.get_all_pos("The quick brown fox jumps over the lazy dog.")
-        {'The': 'DET', 'quick': 'ADJ', 'brown': 'ADJ', 'fox': 'NOUN', 'jumps': 'VERB', 'over': 'ADP', 'the': 'DET', 'lazy': 'ADJ', 'dog': 'NOUN'}
-        """
-        nlp = spacy.load("en_core_web_sm")
-        nlp_prompt = nlp(remove_all_but_words(prompt))
-        words = {}
-        for token in nlp_prompt:
-            words[str(token)] = token.pos_
-        return words
-
-    @staticmethod
-    def get_word_pos(word) -> str:
-        """
-        Given a word, returns its POS.
-
-        Args:
-        word (str): The word to be processed.
-
-        Returns:
-        str: The POS of the given word.
-
-        Examples:
-        >>> StoryBoardPrompt.get_word_pos("quick")
-        'ADJ'
-
-        >>> StoryBoardPrompt.get_word_pos("dog")
-        'NOUN'
-        """
-        nlp = spacy.load("en_core_web_sm")
-        sp_word = nlp(word)
-        return sp_word[0].pos_
-
-    @staticmethod
-
-    #
-    #     # Compute the sinusoidal weights as a function of linear weight y=(sin(X*pi*10*2)+1)/2 where X== linear weight
-    #     sinusoidal_weight =  (np.sin(2 * np.pi * frequency * amplitude * linear_weight)+1)/2
-    #
-    #     return sinusoidal_weight
-
-    def _get_word_weight_at_percent(section, word_index, percent):
+    def _get_word_weight_at_percent(self, section, word_index, percent):
         """
         Calculate the weight of a word based on its section traversal progress.
 
@@ -476,23 +479,28 @@ class StoryBoardPrompt:
 
        """
 
-        curr_word = section[0][word_index][0] # word text
+        curr_word = section[0][word_index][0]  # word text
         action_list = ['NOUN', 'ADJ', 'VERB', 'ADV']
-        pos = StoryBoardPrompt.get_word_pos(curr_word) #temporary... will only do this once per prompt
+
+        pos = self.prompt_pos_dict[0][curr_word]  #fist prompt in list. (currently always the same)
         if pos in action_list:
-            start_weight = section[0][word_index][1] # word weight
+            start_weight = section[0][word_index][1]  # word weight
             end_weight = section[1][word_index][1]
             # Compute the transition weight as a linear interpolation between the start and end weights
             linear_weight = start_weight + percent * (end_weight - start_weight)
             # Compute the cosinusoidal weights as a function of linear weight
             frequency = 3
-            amplitude = -1/10 # -1 to 1
-            cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (abs(amplitude))
-            return cosinusoidal_weight
-        return linear weight #(or 0)
+            amplitude = -1 / 10  # -1 to 1
+            #     # Compute the sinusoidal weights as a function of linear weight y=(sin(X*pi*10*2)+1)/2 where X== linear weight
+            #     sinusoidal_weight =  (np.sin(2 * np.pi * frequency * amplitude * linear_weight)+1)/2
 
-    @staticmethod
-    def _get_frame_values_for_prompt_word_weights(sections,
+            cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (
+                abs(amplitude))
+            return cosinusoidal_weight
+        return 0
+
+
+    def _get_frame_values_for_prompt_word_weights(self, sections,
                                                   num_frames):  # list[sections[frames[word:weight tuples]]]
         """
         >>> while True:
@@ -522,7 +530,7 @@ class StoryBoardPrompt:
                 frame_weights = []
                 for word_idx, word_at_pos in enumerate(start):
                     # format like: ('dog', 0.0)
-                    word_frame_weight = StoryBoardPrompt._get_word_weight_at_percent(section, word_idx,
+                    word_frame_weight = self._get_word_weight_at_percent(section, word_idx,
                                                                                      i / (num_frames - 1))
 
                     frame_weights.append((word_at_pos[0], word_frame_weight))
@@ -567,7 +575,7 @@ class StoryBoardPrompt:
                 break
 
         section_start_time = self._times_sections_start[section_second_is_in]
-        section_end_time = self._times_sections_start[section_second_is_in]+self.seconds_lengths[section_second_is_in]
+        section_end_time = self._times_sections_start[section_second_is_in] + self.seconds_lengths[section_second_is_in]
         section_length = section_end_time - section_start_time
         section_percent = (seconds - section_start_time) / section_length
 
@@ -590,13 +598,12 @@ class StoryBoardPrompt:
         out = [sp for sp in p if sp[0] in self.noun_list]
         return out
 
+
 class StoryBoardSeed():
 
-    def __init__(self, seeds:[int], times:[int]):
+    def __init__(self, seeds: [int], times: [int]):
         self.seeds = seeds
         self.times = times
-
-
 
     def get_seed_at_time(self, seconds):
         """
@@ -614,19 +621,20 @@ class StoryBoardSeed():
 
         """
         times = self.times
-        times= [0]+times
-        seeds= self.seeds
+        times = [0] + times
+        seeds = self.seeds
         import numpy as np
         if seconds < times[0]:
             raise ValueError("seconds cannot be less than the start time of the storyboard")
         if seconds > times[-1]:
             raise ValueError("seconds cannot be greater than the end time of the storyboard")
-        index = np.searchsorted(times, seconds)-1
-        index = max(index,0)
-        total_time_in_section = times[index] - times[index+1]
+        index = np.searchsorted(times, seconds) - 1
+        index = max(index, 0)
+        total_time_in_section = times[index] - times[index + 1]
         time_into_section = seconds - times[index]
         percent_into_section = time_into_section / total_time_in_section
-        return seeds[index], seeds[index+1], abs(percent_into_section)
+        return seeds[index], seeds[index + 1], abs(percent_into_section)
+
     def get_seeds_at_times(self, seconds_list):
         """
         >>> times = [4,8,16]
@@ -642,18 +650,22 @@ class StoryBoardSeed():
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s) for s in seconds_list]
+
     def get_prime_seeds_at_times(self, seconds_list):
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s)[0] for s in seconds_list]
+
     def get_subseeds_at_times(self, seconds_list):
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s)[1] for s in seconds_list]
+
     def get_subseed_strength_at_times(self, seconds_list):
         if isinstance(seconds_list, float) or isinstance(seconds_list, int):
             seconds_list = [seconds_list]
         return [self.get_seed_at_time(s)[2] for s in seconds_list]
+
 
 class StoryBoardData:
     def __init__(self, storyboard_prompt: StoryBoardPrompt, storyboard_seed: StoryBoardSeed):
@@ -661,10 +673,10 @@ class StoryBoardData:
         self.storyboard_seed = storyboard_seed
 
 
-
 if __name__ == "__main__":
     import modules.paths
     import doctest
+
     print(StoryBoardPrompt(
         [
             "super:1 hero:1 cat:0.0",
@@ -695,4 +707,3 @@ if __name__ == "__main__":
     movie_seconds_per_frame = 1 / movies_fps
     movie_frames = [SBP(i * movie_seconds_per_frame) for i in range(movie_length_in_frames)]
     print(movie_frames, len(movie_frames))
-
