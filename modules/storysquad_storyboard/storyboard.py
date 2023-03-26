@@ -388,9 +388,14 @@ class StoryBoardPrompt:
         'NOUN'
 
         """
-        pos = self.prompt_pos_dicts[0][word] #fist prompt_pos_dict in list. (currently always the same)
-        return pos
 
+        if not word or not isinstance(word, str) or not word[0].isalpha():
+            return None
+
+        # get word's POS from the dictionary, or return None if the word is not present
+        # uses the first dict which for now is the same as all others
+        pos = self.prompt_pos_dicts[0].get(word, None)
+        return pos
     @staticmethod
     def _sanitize_prompt(prompt):
         """
@@ -406,6 +411,7 @@ class StoryBoardPrompt:
         prompt = prompt.replace("\r", " ")
         prompt = prompt.replace("[", " ").replace("]", " ")
         prompt = prompt.replace("{", " ").replace("}", " ")
+        prompt = prompt.replace('-', "")
         # compact blankspace
         for i in range(10):
             prompt = prompt.replace("  ", " ")
@@ -497,7 +503,7 @@ class StoryBoardPrompt:
             cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (
                 abs(amplitude))
             return cosinusoidal_weight
-        return 0
+        return linear_weight
 
 
     def _get_frame_values_for_prompt_word_weights(self, sections,
