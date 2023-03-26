@@ -147,7 +147,6 @@ uvicorn==0.20.0
 wcwidth==0.2.6
 websockets==10.4
 Werkzeug==2.2.3
-xformers @ https://github.com/C43H66N12O12S2/stable-diffusion-webui/releases/download/f/xformers-0.0.14.dev0-cp310-cp310-win_amd64.whl
 yapf==0.32.0
 yarl==1.8.2
 zipp==3.14.0
