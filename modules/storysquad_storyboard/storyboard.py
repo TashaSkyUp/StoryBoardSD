@@ -227,6 +227,8 @@ def sanitize_prompt(prompt):
     prompt = prompt.replace("\t", " ")
     prompt = prompt.replace("[", " ").replace("]", " ")
     prompt = prompt.replace("{", " ").replace("}", " ")
+    prompt = prompt.replace('-', "")
+
     # compact blankspace
     for i in range(10):
         prompt = prompt.replace("  ", " ")
@@ -474,7 +476,7 @@ class StoryBoardPrompt:
 
 
         >>> test_obj = StoryBoardPrompt("doctests", [.5,.5])
-        >>> percent_values = np.linspace(0, 1, 1000)
+        >>> percent_values = np.linspace(0, 1, 30)
         >>> weights = [[test_obj._get_word_weight_at_percent(test_obj._sections[0], word_index=i, percent=p) for p in percent_values] for i in range(2)]
         >>> plt.plot(percent_values, weights[0])
         >>> plt.plot(percent_values, weights[1])
@@ -486,23 +488,25 @@ class StoryBoardPrompt:
        """
 
         curr_word = section[0][word_index][0]  # word text
-        action_list = ['NOUN', 'ADJ', 'VERB', 'ADV']
+        action_list = ['PROPN', 'NOUN', 'ADJ', 'VERB', 'ADV']
 
         pos = self.get_word_pos(curr_word)
+        # Compute the transition weight as a linear interpolation between the start and end weights
+        start_weight = section[0][word_index][1]  # word weight
+        end_weight = section[1][word_index][1]
+        linear_weight = start_weight + percent * (end_weight - start_weight)
         if pos in action_list:
-            start_weight = section[0][word_index][1]  # word weight
-            end_weight = section[1][word_index][1]
-            # Compute the transition weight as a linear interpolation between the start and end weights
-            linear_weight = start_weight + percent * (end_weight - start_weight)
-            # Compute the cosinusoidal weights as a function of linear weight
-            frequency = 3
-            amplitude = -1 / 10  # -1 to 1
-            #     # Compute the sinusoidal weights as a function of linear weight y=(sin(X*pi*10*2)+1)/2 where X== linear weight
-            #     sinusoidal_weight =  (np.sin(2 * np.pi * frequency * amplitude * linear_weight)+1)/2
 
-            cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (
-                abs(amplitude))
-            return cosinusoidal_weight
+
+            # Compute the cosinusoidal weights as a function of linear weight
+            frequency = 32
+            amplitude = -1 / 10  # -1 to 1
+            # Compute the sinusoidal weights as a function of linear weight y=(sin(X*pi*10*2)+1)/2 where X== linear weight
+            sinusoidal_weight =  (np.sin(2 * np.pi * frequency * amplitude * linear_weight)+1)/2
+            cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (abs(amplitude))
+            if cosinusoidal_weight > 1.5:
+                cosinusoidal_weight -= 0.5
+            return cosinusoidal_weight #min(cosinusoidal_weight, 1)
         return linear_weight
 
 
