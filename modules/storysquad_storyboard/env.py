@@ -6,6 +6,21 @@ def get_this_files_path():
     return os.path.dirname(os.path.realpath(__file__))
 
 
+STORYBOARD_API_MODEL_PATH = os.getenv("STORYBOARD_API_MODEL_PATH", "model.ckpt")
+STORYBOARD_RENDER_SERVER_URLS = \
+    os.getenv("STORYBOARD_RENDER_SERVER_URLS",
+              ["http://127.0.0.1:7861/sdapi/v1/txt2img",
+               #"http://127.0.0.1:7862/sdapi/v1/txt2img",
+               #"http://127.0.0.1:7863/sdapi/v1/txt2img",
+               #"http://127.0.0.1:7864/sdapi/v1/txt2img",
+               "http://18.225.4.178:7860/sdapi/v1/txt2img", # AWS SBR 4
+               #"http://18.222.67.149:7860/sdapi/v1/txt2img", # AWS SBR 5
+               ])
+
+STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "app")
+# STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "sd_server")
+# STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "ui_only")
+
 STORYBOARD_DEV_MODE = os.getenv("STORYBOARD_DEV_MODE") == "True"
 STORYBOARD_RENDER_PATH = os.getenv("STORYBOARD_RENDER_PATH", get_this_files_path())
 if STORYBOARD_RENDER_PATH:
@@ -14,7 +29,7 @@ if STORYBOARD_RENDER_PATH:
 STORYBOARD_FFMPEG_PATH = os.getenv("STORYBOARD_FFMPEG_PATH", "ERROR")
 if STORYBOARD_FFMPEG_PATH == "ERROR":
     try:
-        fallback =get_ffmpeg_exe()
+        fallback = get_ffmpeg_exe()
         print(f'fallback: {fallback}')
         STORYBOARD_FFMPEG_PATH = fallback
     except:

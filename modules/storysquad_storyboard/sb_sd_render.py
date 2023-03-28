@@ -1,14 +1,29 @@
+import asyncio
+import base64
+import random
+from typing import Any
+
+import httpx
+from PIL import Image
+
 import modules.scripts
 import modules.shared as shared
 from modules.processing import StableDiffusionProcessingTxt2Img, \
     process_images
 from modules.shared import opts, cmd_opts
 from .sb_rendering import SBMultiSampleArgs, SBImageResults
+from modules.api.models import StableDiffusionTxt2ImgProcessingAPI
+import requests
+import json
+from .env import *
+
+global wrap_around
+wrap_around = 0
 
 
 def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleArgs):
     # convert the story board params to StableDiffusionProcessingTxt2Img params
-    if not isinstance(sb_iparams,SBMultiSampleArgs):
+    if not isinstance(sb_iparams, SBMultiSampleArgs):
         raise TypeError(f"sb_iparams must be of type SBMultiSampleArgs, but is {type(sb_iparams)}")
 
     # get the hyper params
@@ -29,12 +44,11 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
     batch_count = sb_iparams.render.batch_count
     batch_size = sb_iparams.render.batch_size
 
-    if isinstance(prompt,list):
+    if isinstance(prompt, list):
         if batch_size > len(prompt):
             batch_size = len(prompt)
     else:
-            batch_size = 1
-
+        batch_size = 1
 
     sampler_index = sb_iparams.render.sampler_index
     sampler_name = sb_iparams.render.sampler_name
@@ -67,8 +81,6 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
     return tmp
 
 
-
-
 def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImageResults:
     p = get_sd_txt_2_image_params_from_story_board_params(params)
 
@@ -78,7 +90,7 @@ def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImage
     for i in range(len(p.seed)):
         if p.seed[i] == -1:
             p.seed[i] = modules.processing.get_fixed_seed(-1)
-    p.do_not_save_samples=True
+    p.do_not_save_samples = True
 
     try:
         processed = process_images(p)
@@ -88,7 +100,7 @@ def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImage
         results = []
         for i in range(len(params.combined.hyper.prompt)):
             try:
-                sbim=params[i]
+                sbim = params[i]
                 p = get_sd_txt_2_image_params_from_story_board_params(sbim)
                 results.append(process_images(p))
             except Exception as e:
@@ -110,3 +122,81 @@ def storyboard_call_multi(params: SBMultiSampleArgs, *args, **kwargs) -> SBImage
     )
 
     return sb_results
+
+
+async def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -> SBImageResults:
+    global wrap_around
+    if wrap_around == len(STORYBOARD_RENDER_SERVER_URLS) - 1:
+        wrap_around = 0
+    else:
+        wrap_around = wrap_around + 1
+
+    p = get_sd_txt_2_image_params_from_story_board_params(params)
+
+    p.scripts = modules.scripts.scripts_txt2img
+
+    # turn all -1 seeds to random values ala modules.processing.get_fixed_seed(-1)
+    for i in range(len(p.seed)):
+        if p.seed[i] == -1:
+            p.seed[i] = modules.processing.get_fixed_seed(-1)
+    p.do_not_save_samples = True
+
+    server_url = STORYBOARD_RENDER_SERVER_URLS[wrap_around]
+    processed = await call_json_api_endpoint_async(url=server_url, data=p)
+
+    shared.total_tqdm.clear()
+    generation_info_js = processed["parameters"]
+    images = processed["images"]
+    if opts.samples_log_stdout:
+        print(generation_info_js)
+    processed["parameters"]["images"] = images
+    if opts.do_not_show_images:
+        processed.images = []
+    sb_results = SBImageResults(
+        api_results=processed["parameters"]
+        # generation_info_js=generation_info_js,
+        # generation_info_html=plaintext_to_html(generation_info_js)
+    )
+
+    return sb_results
+
+
+def decode_base64_to_image(encoding):
+    if encoding.startswith("data:image/"):
+        encoding = encoding.split(";")[1].split(",")[1]
+    from io import BytesIO
+    image = Image.open(BytesIO(base64.b64decode(encoding)))
+    return image
+
+
+def call_json_api_endpoint(url, data):
+    headers = {'content-type': 'application/json'}
+    if isinstance(data, StableDiffusionProcessingTxt2Img):
+        data = vars(data)
+        data.pop("scripts", None)
+        data.pop("script_args")
+        data.pop("s_tmax")
+    res = requests.post(url, data=json.dumps(data), headers=headers)
+    rj = res.json()
+    rj["images"] = [decode_base64_to_image(i) for i in rj["images"]]
+    return rj
+
+
+async def call_json_api_endpoint_async(url: str, data: Any) -> dict:
+    headers = {'content-type': 'application/json'}
+    if isinstance(data, StableDiffusionProcessingTxt2Img):
+        data = vars(data)
+        data.pop("scripts", None)
+        data.pop("script_args")
+        data.pop("s_tmax")
+
+    timeout = httpx.Timeout(300.0)  # Set the read timeout to 5 minutes
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(url=url,
+                                data=json.dumps(data),
+                                headers=headers)
+
+    rj = res.json()
+    rj["images"] = [decode_base64_to_image(i) for i in rj["images"]]
+    return rj

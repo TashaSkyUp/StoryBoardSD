@@ -1,0 +1,18 @@
+@startuml
+allow_mixing
+
+box "Box 1" #LightBlue
+    actor User
+    note right: test
+end box
+
+
+box "Box 2" #LightGreen
+
+    actor User
+    note right: test
+end box
+
+Box 1 -right-> Box 2 : To the right
+
+@enduml

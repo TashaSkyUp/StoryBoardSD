@@ -13,7 +13,7 @@ from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_
 from modules.storysquad_storyboard.constants import *
 
 GTTS_SAMPLE_RATE = 24000.0
-MAX_BATCH_SIZE = 9
+MAX_BATCH_SIZE = 10
 NUM_SB_IMAGES = 3
 
 
@@ -685,6 +685,7 @@ def batched_renderer(SBIMulti, SBIMA_render_func, to_npy=False, rparam: DefaultR
     import sys
     import time
     import numpy as np
+    SBIMulti = SBIMulti.combined
     images_to_save = []
     batch_times = []
     start_time = time.time()
@@ -696,7 +697,7 @@ def batched_renderer(SBIMulti, SBIMA_render_func, to_npy=False, rparam: DefaultR
         slice = SBIMulti[i:max_idx]
         slice.render.batch_size = max_batch_size
         results = SBIMA_render_func(slice.combined, 0)
-        images_to_save = images_to_save + results.all_images[1:1 + len(slice)]
+        images_to_save = images_to_save + results.all_images
 
         batch_times.append(time.time())
         print(f"Images {i} to {i + MAX_BATCH_SIZE}, of {len(SBIMulti)}")
@@ -729,7 +730,7 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
     import numpy as np
     from PIL import Image
     images_to_save = []
-    bathc_times = []
+    batch_times = []
     start_time = time.time()
     # start by rendering only half of the frames
     even_SBIM = SBIMultiArgs[::2]
@@ -745,9 +746,10 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
     for i in range(len(SBIMultiArgs)):
         if i % 2 == 0:
             try:
+                idx = i // 2
                 all_results.append((i,
                                     0,
-                                    even_results[i // 2]))
+                                    even_results[idx]))
             except IndexError:
                 print(f"index error for {i}")
         else:
@@ -757,11 +759,17 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
         if all_results[i] is None:
             all_results[i] = SBIMultiArgs[i]
 
+    if len(all_results) % 2 == 0:
+        all_results[-1] = (len(all_results) - 1, 0, all_results[-1])
+
     for i in range(0, len(all_results) - 2, 2):
         imga = all_results[i][2]
         imgb = all_results[i + 2][2]
         difference = np.mean(np.square(imga - imgb))
         all_results[i + 1] = (i + 1, difference, all_results[i + 1])
+
+
+    #all_results[-1] = SBIMultiArgs[i]
 
     if isinstance(all_results[-1], SBMultiSampleArgs):
         all_results[-1] = (len(all_results) - 1, 1, all_results[-1])
@@ -779,8 +787,8 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
             else:
                 new_SBIM += SBIMultiArg
         else:
-            break
-
+            pass
+    new_results = []
     if new_SBIM is not None:
         new_results = batched_renderer(new_SBIM,
                                        SBIMA_render_func=SBIMA_render_func,
@@ -867,7 +875,7 @@ class SBMultiSampleArgs:
 
     @property
     def hyper(self):
-        if self._length == 1:
+        if self._length == 1 :
             # if there is only one hyper param, return it
             return self._hyper[0]
         else:
@@ -899,32 +907,60 @@ class SBImageResults:
     This class is used to hold the results of a render provided in/by the modules.processing.Processed class
     """
 
-    def __init__(self, processed):
-        self.batch_size = processed.batch_size
-        self.processed = processed
-        self.all_images = processed.images
-        self.all_prompts = processed.all_prompts
-        self.all_seeds = processed.all_seeds
-        self.all_subseeds = processed.all_subseeds
-        if len(self.all_subseeds) != len(self.all_seeds):
-            self.all_subseeds = self.all_seeds.copy()
+    def __init__(self, processed=None, api_results=None):
+        if processed is not None:
+            self.batch_size = processed.batch_size
+            self.processed = processed
+            self.all_images = processed.images
+            self.all_prompts = processed.all_prompts
+            self.all_seeds = processed.all_seeds
+            self.all_subseeds = processed.all_subseeds
+            if len(self.all_subseeds) != len(self.all_seeds):
+                self.all_subseeds = self.all_seeds.copy()
 
-        # these need to be adapted to be changable inter-batch if possible
-        self.all_negative_prompts = [processed.negative_prompt] * processed.batch_size
-        self.all_steps = [processed.steps] * processed.batch_size
-        self.all_subseed_strengths = [processed.subseed_strength] * len(processed.all_seeds)
-        self.all_cfg_scales = [processed.cfg_scale] * len(processed.all_seeds)
+            # these need to be adapted to be changable inter-batch if possible
+            self.all_negative_prompts = [processed.negative_prompt] * processed.batch_size
+            self.all_steps = [processed.steps] * processed.batch_size
+            self.all_subseed_strengths = [processed.subseed_strength] * len(processed.all_seeds)
+            self.all_cfg_scales = [processed.cfg_scale] * len(processed.all_seeds)
 
-        self.batch_size = processed.batch_size
-        self.cfg_scale = processed.cfg_scale
-        self.clip_skip = processed.clip_skip
-        self.height = processed.height
-        self.width = processed.width
-        self.job_timestamp = processed.job_timestamp
-        self.negative_prompt = processed.negative_prompt
-        self.sampler_name = processed.sampler_name
-        self.steps = processed.steps
-        self.sb_iparams: SBMultiSampleArgs = self.sb_multi_sample_args_from_sd_results()
+            self.batch_size = processed.batch_size
+            self.cfg_scale = processed.cfg_scale
+            self.clip_skip = processed.clip_skip
+            self.height = processed.height
+            self.width = processed.width
+            self.job_timestamp = processed.job_timestamp
+            self.negative_prompt = processed.negative_prompt
+            self.sampler_name = processed.sampler_name
+            self.steps = processed.steps
+            self.sb_iparams: SBMultiSampleArgs = self.sb_multi_sample_args_from_sd_results()
+
+        elif api_results is not None:
+            self.batch_size = api_results['batch_size']
+            self.processed = api_results
+            self.all_images = api_results['images']
+            self.all_prompts = api_results['prompt']
+            self.all_seeds = api_results['seed']
+            self.all_subseeds = api_results['subseed']
+            if len(self.all_subseeds) != len(self.all_seeds):
+                self.all_subseeds = self.all_seeds.copy()
+
+            # these need to be adapted to be changable inter-batch if possible
+            self.all_negative_prompts = [api_results['negative_prompt']] * api_results['batch_size']
+            self.all_steps = [api_results['steps']] * api_results['batch_size']
+            self.all_subseed_strengths = [api_results['subseed_strength']]  * api_results['batch_size']
+            self.all_cfg_scales = [api_results['cfg_scale']] * api_results['batch_size']
+
+            self.batch_size = api_results['batch_size']
+            self.cfg_scale = api_results['cfg_scale']
+            #self.clip_skip = api_results['clip_skip']
+            self.height = api_results['height']
+            self.width = api_results['width']
+            #self.job_timestamp = api_results['job_timestamp']
+            self.negative_prompt = api_results['negative_prompt']
+            self.sampler_name = api_results['sampler_name']
+            self.steps = api_results['steps']
+            self.sb_iparams: SBMultiSampleArgs = self.sb_multi_sample_args_from_sd_results()
 
         self.img_hyper_params_list = [SBIHyperParams(prompt=prompt,
                                                      negative_prompt=negative_prompt,
@@ -950,16 +986,16 @@ class SBImageResults:
 
         tmp_list_of_st_sq_render_params = [SBIRenderParams(width=self.width,
                                                            height=self.height,
-                                                           restore_faces=processed.restore_faces,
+                                                           #restore_faces=self.restore_faces,
                                                            # tiling does not make it to through the conversion to "procesed"
                                                            # tiling=processed.extra_generation_params[""],
                                                            tiling=None,
                                                            # batch count does not make it to through the conversion to "procesed"
                                                            # batch_count=processed.,batch_count
                                                            batch_count=None,
-                                                           batch_size=processed.batch_size,
-                                                           sampler_name=processed.sampler_name)
-                                           for _ in range(processed.batch_size)]
+                                                           batch_size=self.batch_size,
+                                                           sampler_name=self.sampler_name)
+                                           for _ in range(self.batch_size)]
 
         self.all_as_stb_image_params = [SBMultiSampleArgs(hyper=hyper,
                                                           render=render)
@@ -982,35 +1018,35 @@ class SBImageResults:
     def sb_multi_sample_args_from_sd_results(self) -> SBMultiSampleArgs:
         # convert the StableDiffusionProcessingTxt2Img params to SBMultiSampleArgs
         processed = self.processed
-        if len(processed.all_seeds) == len(processed.all_prompts):
+        if len(self.all_seeds) == len(self.all_prompts):
             # then these results are for multiple seeds and prompts
-            t_hyp = SBIHyperParams(prompt=processed.all_prompts,
-                                   negative_prompt=processed.negative_prompt,
-                                   steps=processed.steps,
-                                   seed=processed.all_seeds,
-                                   subseed=processed.all_subseeds,
+            t_hyp = SBIHyperParams(prompt=self.all_prompts,
+                                   negative_prompt=self.negative_prompt,
+                                   steps=self.steps,
+                                   seed=self.all_seeds,
+                                   subseed=self.all_subseeds,
                                    # TODO: check if this is valid for multiple subseed
                                    #  strengths
-                                   subseed_strength=processed.subseed_strength,
-                                   cfg_scale=processed.cfg_scale)
+                                   subseed_strength=self.all_subseed_strengths,
+                                   cfg_scale=self.cfg_scale)
         else:
-            t_hyp = SBIHyperParams(prompt=processed.prompt,
-                                   negative_prompt=processed.negative_prompt,
-                                   steps=processed.steps,
-                                   seed=processed.seed,
-                                   subseed=processed.subseed,
-                                   subseed_strength=processed.subseed_strength,
-                                   cfg_scale=processed.cfg_scale)
+            t_hyp = SBIHyperParams(prompt=self.all_prompts,
+                                   negative_prompt=self.negative_prompt,
+                                   steps=self.steps,
+                                   seed=self.all_seeds,
+                                   subseed=self.all_subseeds,
+                                   subseed_strength=self.all_subseed_strengths,
+                                   cfg_scale=self.cfg_scale)
 
-        t_render = SBIRenderParams(width=processed.width,
-                                   height=processed.height,
-                                   restore_faces=processed.restore_faces,
+        t_render = SBIRenderParams(width=self.width,
+                                   height=self.height,
+                                   #restore_faces=self.,
                                    # TODO: figure out where to get this from
                                    tiling=False,
                                    # TODO: check if the Processed class is just for one batch always
                                    batch_count=1,
-                                   batch_size=processed.batch_size,
-                                   sampler_name=processed.sampler_name)
+                                   batch_size=self.batch_size,
+                                   sampler_name=self.sampler_name)
 
         t_params = SBMultiSampleArgs(hyper=t_hyp, render=t_render)
 
@@ -1065,7 +1101,7 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
 
     # the audio is rendered first, attempting to reach some target length.
     # the video is rendered second, to match the length of the resultant audio
-
+    my_render_params = copy.deepcopy(my_render_params)
     mytext = ui_params[0]
     if test or test_render:
         mytext = "one two three four five six seven eight nine ten"
@@ -1098,8 +1134,9 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
     base_Hyper = copy.deepcopy(base_SBIMulti.hyper)
     # turn the list of prompts and seeds into a list of CallArgsAsData using the base_params as a template
     # populate the storyboard_call_multi with the prompts and seeds
+    out_hyper =  SBIHyperParams()
     for prompt, seed in zip(prompts, seeds):
-        base_SBIMulti += SBIHyperParams(
+        out_hyper += SBIHyperParams(
             prompt=prompt,
             seed=seed[0],
             subseed=seed[1],
@@ -1108,16 +1145,11 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
             steps=base_Hyper.steps,
             cfg_scale=base_Hyper.cfg_scale,
         )
-    # trim off the extra frame
-    if base_SBIMulti[0].hyper.prompt == "":
-        base_SBIMulti = base_SBIMulti[1:]
-
-    if not test or test_render:
-        # images_to_save = self.batched_renderer(base_SBIMulti, early_stop, self.storyboard)
-        images_to_save = batched_selective_renderer(base_SBIMulti,
-                                                    rparam=my_render_params,
-                                                    early_stop=early_stop,
-                                                    SBIMA_render_func=SBIMA_render_func)
+    out_SBM= SBMultiSampleArgs(hyper=out_hyper, render=base_SBIMulti.render)
+    images_to_save = batched_selective_renderer(out_SBM,
+                                                rparam=my_render_params,
+                                                early_stop=early_stop,
+                                                SBIMA_render_func=SBIMA_render_func)
 
     target_mp4_f_path = compose_file_handling(audio_f_path, images_to_save)
     return all_state, target_mp4_f_path
