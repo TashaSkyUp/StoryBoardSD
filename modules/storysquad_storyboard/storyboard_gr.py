@@ -331,11 +331,12 @@ class StoryBoardGradio:
         # TODO: make sure this resets the render button and the generate button and the image explorerer area
         all_state = state[self.all_state]
 
-        if len(all_state["story_board"]) > 0:
+        num_slots_used =  sum(1 for item in all_state["story_board"] if item is not None)
+        if num_slots_used > 0:
             new_prompt = state[self.comp_helper.prompt]
-            new_prompt = get_prompt_words_list(new_prompt,punc=True)
+            if len(new_prompt) > 0:
+                new_prompt = get_prompt_words_list(new_prompt,punc=True)
             new_prompt =" ".join(new_prompt)
-
             old_prompt = all_state["story_board"][0].prompt
             old_prompt = get_prompt_words_list(old_prompt,punc=True)
             old_prompt =" ".join(old_prompt)
