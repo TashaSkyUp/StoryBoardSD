@@ -29,7 +29,7 @@ from ldm.models.diffusion.ddpm import LatentDepth2ImageDiffusion
 
 from einops import repeat, rearrange
 from blendmodes.blend import blendLayers, BlendType
-
+import time
 # some of those options should not be changed at all because they would break the model, so I removed them from options.
 opt_C = 4
 opt_f = 8
@@ -651,7 +651,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             subseeds = p.all_subseeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
 
             if p.scripts is not None:
-                p.scripts.before_process_batch(p, batch_number=n, prompts=prompts, seeds=seeds, subseeds=subseeds)
+                p.scripts.before_process_batch(p, batch_number=iter_num, prompts=prompts, seeds=seeds, subseeds=subseeds)
 
             if len(prompts) == 0:
                 break

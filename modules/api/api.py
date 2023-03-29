@@ -267,14 +267,15 @@ class Api:
         script_args = [None]*last_arg_index
         script_args[0] = 0
 
-        # get default values
-        with gr.Blocks(): # will throw errors calling ui function without this
-            for script in script_runner.scripts:
-                if script.ui(script.is_img2img):
-                    ui_default_values = []
-                    for elem in script.ui(script.is_img2img):
-                        ui_default_values.append(elem.value)
-                    script_args[script.args_from:script.args_to] = ui_default_values
+        if len(script_args)>1:
+            # get default values
+            with gr.Blocks(): # will throw errors calling ui function without this
+                for script in script_runner.scripts:
+                    if script.ui(script.is_img2img):
+                        ui_default_values = []
+                        for elem in script.ui(script.is_img2img):
+                            ui_default_values.append(elem.value)
+                        script_args[script.args_from:script.args_to] = ui_default_values
         return script_args
 
     def init_script_args(self, request, default_script_args, selectable_scripts, selectable_idx, script_runner):
@@ -302,14 +303,17 @@ class Api:
         start_time = time.time()
         req_hash = hash(str(txt2imgreq))
         print(f"Processing text2img request: {req_hash}")
-
+        selectable_scripts, selectable_script_idx= None, None
         script_runner = scripts.scripts_txt2img
-        if not script_runner.scripts:
+        if not script_runner.scripts and not shared.cmd_opts.nowebui:
             script_runner.initialize_scripts(False)
             ui.create_ui()
+
         if not self.default_script_arg_txt2img:
             self.default_script_arg_txt2img = self.init_default_script_args(script_runner)
-        selectable_scripts, selectable_script_idx = self.get_selectable_script(txt2imgreq.script_name, script_runner)
+
+        if script_runner.alwayson_scripts:
+            selectable_scripts, selectable_script_idx = self.get_selectable_script(txt2imgreq.script_name, script_runner)
 
         populate = txt2imgreq.copy(update={  # Override __init__ params
             "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
@@ -324,7 +328,11 @@ class Api:
         args.pop('script_args', None) # will refeed them to the pipeline directly after initializing them
         args.pop('alwayson_scripts', None)
 
-        script_args = self.init_script_args(txt2imgreq, self.default_script_arg_txt2img, selectable_scripts, selectable_script_idx, script_runner)
+        if selectable_scripts != None and selectable_script_idx != None:
+            script_args = self.init_script_args(txt2imgreq, self.default_script_arg_txt2img, selectable_scripts,
+                                                selectable_script_idx, script_runner)
+        else:
+            script_args = self.default_script_arg_txt2img
 
         send_images = args.pop('send_images', True)
         args.pop('save_images', None)

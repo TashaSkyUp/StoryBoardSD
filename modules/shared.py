@@ -587,6 +587,8 @@ class Options:
 opts = Options()
 if os.path.exists(config_filename):
     opts.load(config_filename)
+    if STORYBOARD_API_MODEL_PATH:
+        opts.sd_model_checkpoint = os.path.basename(STORYBOARD_API_MODEL_PATH)
 
 settings_components = None
 """assinged from ui.py, a mapping on setting anmes to gradio components repsponsible for those settings"""
