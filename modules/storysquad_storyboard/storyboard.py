@@ -12,7 +12,7 @@ DEV_MODE = os.getenv("STORYBOARD_DEV_MODE", "False") == "True"
 DEFAULT_HYPER_PARAMS = {
     "prompt": "",
     "negative_prompt": "",
-    "steps": 8,
+    "steps": 6,
     "seed": -1,
     "subseed": 0,
     "subseed_strength": 0,
@@ -486,7 +486,6 @@ class StoryBoardPrompt:
         >>> plt.show()
 
        """
-
         curr_word = section[0][word_index][0]  # word text
         action_list = ['PROPN', 'NOUN', 'ADJ', 'VERB', 'ADV']
 
@@ -496,18 +495,16 @@ class StoryBoardPrompt:
         end_weight = section[1][word_index][1]
         linear_weight = start_weight + percent * (end_weight - start_weight)
         if pos in action_list:
-
-
             # Compute the cosinusoidal weights as a function of linear weight
-            frequency = 32
-            amplitude = -1 / 10  # -1 to 1
+            frequency: float = 3
+            amplitude: float = -1 / 10  # -1 to 1
             # Compute the sinusoidal weights as a function of linear weight y=(sin(X*pi*10*2)+1)/2 where X== linear weight
             sinusoidal_weight =  (np.sin(2 * np.pi * frequency * amplitude * linear_weight)+1)/2
             cosinusoidal_weight = (np.cos(2 * np.pi * percent * frequency) * amplitude) + linear_weight + (abs(amplitude))
             if cosinusoidal_weight > 1.5:
                 cosinusoidal_weight -= 0.5
-            return cosinusoidal_weight #min(cosinusoidal_weight, 1)
-        return linear_weight
+            return min(cosinusoidal_weight, 1)
+        return (linear_weight * 0.8) #assigns penalty to weight of words not represented by 'action_list'
 
 
     def _get_frame_values_for_prompt_word_weights(self, sections,

@@ -50,7 +50,7 @@ def do_testing(my_ren_p, storyboard_params, ui_params, render_func, test=-10):
     sb_seeds_list = [1, 2, 3]
     ui_params = list(ui_params)
     ui_params[1] = negative_prompt
-    ui_params[2] = 6  # steps
+    ui_params[2] = 12  # steps
 
     sb_prompt = StoryBoardPrompt(sb_prompts, my_ren_p.seconds, False)
     sb_seeds = StoryBoardSeed(sb_seeds_list,

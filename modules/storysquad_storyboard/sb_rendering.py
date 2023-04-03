@@ -13,7 +13,7 @@ from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_
 from modules.storysquad_storyboard.constants import *
 
 GTTS_SAMPLE_RATE = 24000.0
-MAX_BATCH_SIZE = 10
+MAX_BATCH_SIZE = 20
 NUM_SB_IMAGES = 3
 
 
@@ -29,7 +29,7 @@ class DefaultRender:
     early_stop_seconds = int(60 * 30 * 16)  # 8 hours
     width: int = 512
     height: int = 512
-    restore_faces: bool = False
+    restore_faces: bool = True
     tiling: bool = False
     batch_count: int = 1
     batch_size: int = MAX_BATCH_SIZE
