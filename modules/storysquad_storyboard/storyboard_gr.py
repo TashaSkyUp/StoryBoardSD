@@ -695,25 +695,31 @@ class StoryBoardGradio:
 
             run_test = False
             out_call_args: SBMultiSampleArgs = SBMultiSampleArgs(render=base_params._render, hyper=[])
+            #out_call_args.render.batch_size = 2
+            sb_image_results_tasks = []
+            for ii in [2,2,2,3]:
+                #for i in range(MAX_IEXP_SIZE):
+                for i in range(ii):
+                    tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
+                    tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
 
-            for i in range(MAX_IEXP_SIZE):
-                tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
-                tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
+                    tmp.prompt = [tmp_prompt]
+                    tmp.seed = [modules.processing.get_fixed_seed(-1)]
 
-                tmp.prompt = [tmp_prompt]
-                tmp.seed = [modules.processing.get_fixed_seed(-1)]
+                    out_call_args += tmp
+                    out_sb_image_hyper_params.append(tmp)
+                oca = copy.copy(out_call_args)
+                oca.render.batch_size = ii
+                sb_image_results_tasks.append(self.storyboard(oca.combined))
 
-                out_call_args += tmp
-                out_sb_image_hyper_params.append(tmp)
-
-            sb_image_results: SBImageResults = self.storyboard(out_call_args.combined)
-
-            out_images = await sb_image_results
-            out_images = out_images.all_images
+            all_res= await asyncio.gather(*sb_image_results_tasks)
+            out_images=[]
+            for sb_image_results in all_res:
+                out_images.extend(sb_image_results.all_images)
 
             # remove the image grid from the result if it exists
             if len(out_images) != MAX_IEXP_SIZE:
-                out_images = out_images[1:]
+                out_images = out_images[:MAX_IEXP_SIZE]
 
             return out_images, out_sb_image_hyper_params
 
