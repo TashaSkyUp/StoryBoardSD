@@ -608,7 +608,7 @@ class StoryBoardGradio:
             # render_call_args = self.explore(render_params, all_state["history"], self.SimpleExplorerModel())
 
         if "handle the regeneration of the explorer second but only if the storyboard is not complete":
-            if len(all_state["story_board"]) < NUM_SB_IMAGES:
+            if len([x for x in all_state['story_board'] if x]) < NUM_SB_IMAGES:
                 tmp = list(await self.on_generate(all_state, *ui_state_comps))
                 all_state, tmp = tmp[0], tmp[1:]
                 exp_images, tmp = tmp[:9], tmp[9:]
