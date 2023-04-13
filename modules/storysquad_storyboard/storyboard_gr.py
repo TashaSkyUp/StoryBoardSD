@@ -331,11 +331,12 @@ class StoryBoardGradio:
         # TODO: make sure this resets the render button and the generate button and the image explorerer area
         all_state = state[self.all_state]
 
-        if len(all_state["story_board"]) > 0:
+        num_slots_used =  sum(1 for item in all_state["story_board"] if item is not None)
+        if num_slots_used > 0:
             new_prompt = state[self.comp_helper.prompt]
-            new_prompt = get_prompt_words_list(new_prompt,punc=True)
+            if len(new_prompt) > 0:
+                new_prompt = get_prompt_words_list(new_prompt,punc=True)
             new_prompt =" ".join(new_prompt)
-
             old_prompt = all_state["story_board"][0].prompt
             old_prompt = get_prompt_words_list(old_prompt,punc=True)
             old_prompt =" ".join(old_prompt)
@@ -607,7 +608,7 @@ class StoryBoardGradio:
             # render_call_args = self.explore(render_params, all_state["history"], self.SimpleExplorerModel())
 
         if "handle the regeneration of the explorer second but only if the storyboard is not complete":
-            if len(all_state["story_board"]) < NUM_SB_IMAGES:
+            if len([x for x in all_state['story_board'] if x]) < NUM_SB_IMAGES:
                 tmp = list(await self.on_generate(all_state, *ui_state_comps))
                 all_state, tmp = tmp[0], tmp[1:]
                 exp_images, tmp = tmp[:9], tmp[9:]
@@ -694,25 +695,31 @@ class StoryBoardGradio:
 
             run_test = False
             out_call_args: SBMultiSampleArgs = SBMultiSampleArgs(render=base_params._render, hyper=[])
+            #out_call_args.render.batch_size = 2
+            sb_image_results_tasks = []
+            for ii in [2,2,2,3]:
+                #for i in range(MAX_IEXP_SIZE):
+                for i in range(ii):
+                    tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
+                    tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
 
-            for i in range(MAX_IEXP_SIZE):
-                tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
-                tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
+                    tmp.prompt = [tmp_prompt]
+                    tmp.seed = [modules.processing.get_fixed_seed(-1)]
 
-                tmp.prompt = [tmp_prompt]
-                tmp.seed = [modules.processing.get_fixed_seed(-1)]
+                    out_call_args += tmp
+                    out_sb_image_hyper_params.append(tmp)
+                oca = copy.copy(out_call_args)
+                oca.render.batch_size = ii
+                sb_image_results_tasks.append(self.storyboard(oca.combined))
 
-                out_call_args += tmp
-                out_sb_image_hyper_params.append(tmp)
-
-            sb_image_results: SBImageResults = self.storyboard(out_call_args.combined)
-
-            out_images = await sb_image_results
-            out_images = out_images.all_images
+            all_res= await asyncio.gather(*sb_image_results_tasks)
+            out_images=[]
+            for sb_image_results in all_res:
+                out_images.extend(sb_image_results.all_images)
 
             # remove the image grid from the result if it exists
             if len(out_images) != MAX_IEXP_SIZE:
-                out_images = out_images[1:]
+                out_images = out_images[:MAX_IEXP_SIZE]
 
             return out_images, out_sb_image_hyper_params
 

@@ -2,7 +2,7 @@ import json
 import math
 import os
 import sys
-import time
+import warnings
 
 import torch
 import numpy as np
@@ -29,7 +29,7 @@ from ldm.models.diffusion.ddpm import LatentDepth2ImageDiffusion
 
 from einops import repeat, rearrange
 from blendmodes.blend import blendLayers, BlendType
-
+import time
 # some of those options should not be changed at all because they would break the model, so I removed them from options.
 opt_C = 4
 opt_f = 8
@@ -124,7 +124,7 @@ class StableDiffusionProcessing:
                  do_not_save_grid: bool = False,
                  extra_generation_params: Dict[Any, Any] = None,
                  overlay_images: Any = None,
-                 negative_prompt: str = None,
+                 negative_prompt: str | List[str] = None,
                  eta: float = None,
                  do_not_reload_embeddings: bool = False,
                  denoising_strength: float = 0,
@@ -566,29 +566,50 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
     modules.sd_hijack.model_hijack.clear_comments()
 
     comments = {}
+    # if its a list, then the batch size is the length of the list
+    # if its a list of lists, then the batch size is the length of the inner lists
+    # and the number of iterations is the length of the outer list
 
+    # right now we are only interested in lists
     if type(p.prompt) == list:
-        p.all_prompts = [shared.prompt_styles.apply_styles_to_prompt(x, p.styles) for x in p.prompt]
+        if type(p.prompt[0]) == list:
+            raise Exception("List of lists not supported")
     else:
-        p.all_prompts = p.batch_size * p.n_iter * [shared.prompt_styles.apply_styles_to_prompt(p.prompt, p.styles)]
+        raise Exception("Prompt must be a list")
+    p.all_prompts = p.prompt
+    p.all_negative_prompts = p.negative_prompt
+    p.all_subseeds = p.subseed
+    p.subseed_strength = p.subseed_strength # why there is not al all_subseed_strength?
+    p.all_seeds = p.seed
+    p.batch_size = len(p.prompt)
+    p.n_iter = 1
+    p.steps = p.steps
+    p.batch_size = p.batch_size
+    p.n_iter = p.n_iter
 
-    if type(p.negative_prompt) == list:
-        p.all_negative_prompts = [shared.prompt_styles.apply_negative_styles_to_prompt(x, p.styles) for x in p.negative_prompt]
-    else:
-        p.all_negative_prompts = p.batch_size * p.n_iter * [shared.prompt_styles.apply_negative_styles_to_prompt(p.negative_prompt, p.styles)]
 
-    if type(seed) == list:
-        p.all_seeds = seed
-    else:
-        # if seed is not a list, we use it as a base seed and generate a list of ascending seeds
-        # if the subseed_strength is 0, we use the same seed for all images
-        p.all_seeds = [int(seed) + (x if p.subseed_strength == 0 else 0) for x in range(len(p.all_prompts))]
+    #if type(p.prompt) == list:
+    #    p.all_prompts = [shared.prompt_styles.apply_styles_to_prompt(x, p.styles) for x in p.prompt]
+    #else:
+    #    p.all_prompts = p.batch_size * p.n_iter * [shared.prompt_styles.apply_styles_to_prompt(p.prompt, p.styles)]
 
-    if type(subseed) == list:
-        p.all_subseeds = subseed
-    else:
-        # if subseed is not a list, we use it as a base subseed and generate a list of ascending subseeds
-        p.all_subseeds = [int(subseed) + x for x in range(len(p.all_prompts))]
+    #if type(p.negative_prompt) == list:
+    #    p.all_negative_prompts = [shared.prompt_styles.apply_negative_styles_to_prompt(x, p.styles) for x in p.negative_prompt]
+    #else:
+    #    p.all_negative_prompts = p.batch_size * p.n_iter * [shared.prompt_styles.apply_negative_styles_to_prompt(p.negative_prompt, p.styles)]
+
+    #if type(seed) == list:
+    #    p.all_seeds = seed
+    #else:
+    #    # if seed is not a list, we use it as a base seed and generate a list of ascending seeds
+    #    # if the subseed_strength is 0, we use the same seed for all images
+    #    p.all_seeds = [int(seed) + (x if p.subseed_strength == 0 else 0) for x in range(len(p.all_prompts))]
+
+    #if type(subseed) == list:
+    #    p.all_subseeds = subseed
+    #else:
+    #    # if subseed is not a list, we use it as a base subseed and generate a list of ascending subseeds
+    #    p.all_subseeds = [int(subseed) + x for x in range(len(p.all_prompts))]
 
     def infotext(iteration=0, position_in_batch=0):
         return create_infotext(p, p.all_prompts, p.all_seeds, p.all_subseeds, comments, iteration, position_in_batch)
@@ -636,6 +657,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
         if state.job_count == -1:
             state.job_count = p.n_iter
 
+        extra_network_data = None
         for iter_num in range(p.n_iter):
             p.iteration = iter_num
             if state.skipped:
@@ -644,22 +666,31 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             if state.interrupted:
                 break
 
-            prompts = p.all_prompts[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
-            negative_prompts = p.all_negative_prompts[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
-            seeds = p.all_seeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
-            subseeds = p.all_subseeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
+            # this is deprecated.
+            # prompts = p.all_prompts[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
+            # negative_prompts = p.all_negative_prompts[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
+            # seeds = p.all_seeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
+            # subseeds = p.all_subseeds[iter_num * p.batch_size:(iter_num + 1) * p.batch_size]
 
-            if len(prompts) == 0:
-                break
+            if p.scripts is not None:
+                p.scripts.before_process_batch(p,
+                                               batch_number=iter_num,
+                                               prompts=p.all_prompts,
+                                               seeds=p.all_seeds,
+                                               subseeds=p.all_subseeds)
 
-            prompts, extra_network_data = extra_networks.parse_prompts(prompts)
+
+            p.all_prompts, extra_network_data = extra_networks.parse_prompts(p.all_prompts)
 
             if not p.disable_extra_networks:
                 with devices.autocast():
                     extra_networks.activate(p, extra_network_data)
 
             if p.scripts is not None:
-                p.scripts.process_batch(p, batch_number=iter_num, prompts=prompts, seeds=seeds, subseeds=subseeds)
+                p.scripts.process_batch(p, batch_number=iter_num,
+                                        prompts=p.all_prompts,
+                                        seeds=p.all_seeds,
+                                        subseeds=p.all_subseeds)
 
             # params.txt should be saved after scripts.process_batch, since the
             # infotext could be modified by that callback
@@ -671,8 +702,8 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                     file.write(processed.infotext(p, 0))
 
             conds_time_start = time.time()
-            uc = get_conds_with_caching(prompt_parser.get_learned_conditioning, negative_prompts, p.steps, cached_uc)
-            c = get_conds_with_caching(prompt_parser.get_multicond_learned_conditioning, prompts, p.steps, cached_c)
+            uc = get_conds_with_caching(prompt_parser.get_learned_conditioning, p.all_negative_prompts, p.steps, cached_uc)
+            c = get_conds_with_caching(prompt_parser.get_multicond_learned_conditioning, p.all_prompts, p.steps, cached_c)
             conds_time_end = time.time()
             print(f"uc/c conds_time: {conds_time_end - conds_time_start}")
 
@@ -684,7 +715,12 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 shared.state.job = f"Batch {iter_num+1} out of {p.n_iter}"
 
             with devices.without_autocast() if devices.unet_needs_upcast else devices.autocast():
-                samples_ddim = p.sample(conditioning=c, unconditional_conditioning=uc, seeds=seeds, subseeds=subseeds, subseed_strength=p.subseed_strength, prompts=prompts)
+                samples_ddim = p.sample(conditioning=c,
+                                        unconditional_conditioning=uc,
+                                        seeds=p.all_seeds,
+                                        subseeds=p.all_subseeds,
+                                        subseed_strength=p.subseed_strength,
+                                        prompts=p.all_prompts)
 
             x_samples_ddim = [decode_first_stage(p.sd_model, samples_ddim[i:i+1].to(dtype=devices.dtype_vae))[0].cpu() for i in range(samples_ddim.size(0))]
             for x in x_samples_ddim:
@@ -709,7 +745,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 # TODO: add ability to return sample directly
                 if p.restore_faces:
                     if opts.save and not p.do_not_save_samples and opts.save_images_before_face_restoration:
-                        images.save_image(Image.fromarray(x_sample), p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p, suffix="-before-face-restoration")
+                        images.save_image(Image.fromarray(x_sample), p.outpath_samples, "", p.all_seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p, suffix="-before-face-restoration")
 
                     devices.torch_gc()
 
@@ -726,18 +762,35 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 if p.color_corrections is not None and i < len(p.color_corrections):
                     if opts.save and not p.do_not_save_samples and opts.save_images_before_color_correction:
                         image_without_cc = apply_overlay(image, p.paste_to, i, p.overlay_images)
-                        images.save_image(image_without_cc, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p, suffix="-before-color-correction")
+                        images.save_image(image_without_cc, p.outpath_samples, "", p.all_seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p, suffix="-before-color-correction")
                     image = apply_color_correction(p.color_corrections[i], image)
 
                 image = apply_overlay(image, p.paste_to, i, p.overlay_images)
+
                 if opts.samples_save and not p.do_not_save_samples:
-                    images.save_image(image, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p)
+                    images.save_image(image, p.outpath_samples, "", p.all_seeds[i], prompts[i], opts.samples_format, info=infotext(iter_num, i), p=p)
 
                 text = infotext(iter_num, i)
                 infotexts.append(text)
                 if opts.enable_pnginfo:
                     image.info["parameters"] = text
                 output_images.append(image)
+
+                if hasattr(p, 'mask_for_overlay') and p.mask_for_overlay:
+                    image_mask = p.mask_for_overlay.convert('RGB')
+                    image_mask_composite = Image.composite(image.convert('RGBA').convert('RGBa'), Image.new('RGBa', image.size), p.mask_for_overlay.convert('L')).convert('RGBA')
+
+                    if opts.save_mask:
+                        images.save_image(image_mask, p.outpath_samples, "", p.all_seeds[i], p.all_prompts[i], opts.samples_format, info=infotext(n, i), p=p, suffix="-mask")
+
+                    if opts.save_mask_composite:
+                        images.save_image(image_mask_composite, p.outpath_samples, "", p.all_seeds[i], p.all_prompts[i], opts.samples_format, info=infotext(n, i), p=p, suffix="-mask-composite")
+
+                    if opts.return_mask:
+                        output_images.append(image_mask)
+
+                    if opts.return_mask_composite:
+                        output_images.append(image_mask_composite)
 
             del x_samples_ddim
 
@@ -763,7 +816,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             if opts.grid_save:
                 images.save_image(grid, p.outpath_grids, "grid", p.all_seeds[0], p.all_prompts[0], opts.grid_format, info=infotext(), short_filename=not opts.grid_extended_filename, p=p, grid=True)
 
-    if not p.disable_extra_networks:
+    if not p.disable_extra_networks and extra_network_data:
         extra_networks.deactivate(p, extra_network_data)
 
     devices.torch_gc()
@@ -941,8 +994,6 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
                 image = np.moveaxis(image, 2, 0)
                 batch_images.append(image)
 
-
-
             decoded_samples = torch.from_numpy(np.array(batch_images))
             decoded_samples = decoded_samples.to(shared.device)
             decoded_samples = 2. * decoded_samples - 1.
@@ -953,7 +1004,9 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
 
         shared.state.nextjob()
 
-        img2img_sampler_name = self.sampler_name if self.sampler_name != 'PLMS' else 'DDIM'  # PLMS does not support img2img so we just silently switch ot DDIM
+        img2img_sampler_name = self.sampler_name
+        if self.sampler_name in ['PLMS', 'UniPC']:  # PLMS/UniPC do not support img2img so we just silently switch to DDIM
+            img2img_sampler_name = 'DDIM'
         self.sampler = sd_samplers.create_sampler(img2img_sampler_name, self.sd_model)
 
         samples = samples[:, :, self.truncate_y//2:samples.shape[2]-(self.truncate_y+1)//2, self.truncate_x//2:samples.shape[3]-(self.truncate_x+1)//2]

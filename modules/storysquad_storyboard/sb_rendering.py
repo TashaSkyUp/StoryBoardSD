@@ -13,8 +13,8 @@ from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_
 from modules.storysquad_storyboard.constants import *
 
 GTTS_SAMPLE_RATE = 24000.0
-MAX_BATCH_SIZE = 12
-NUM_SB_IMAGES = 3
+MAX_BATCH_SIZE = 32
+NUM_SB_IMAGES = 30
 
 
 @dataclass
@@ -1011,7 +1011,18 @@ class SBImageResults:
 
     def __add__(self, other):
         if isinstance(other, SBImageResults):
-            self.img_hyper_params_list += other.img_hyper_params_list
+            for key in self.__dict__.keys():
+                my_value = self.__dict__[key]
+                other_value = other.__dict__[key]
+                if not isinstance(my_value, list):
+                    my_value = [my_value]
+                if not isinstance(other_value, list):
+                    other_value = [other_value]
+
+                self.__dict__[key] = my_value + other_value
+
+
+            return self
         else:
             print("Cannot add SBImageResults to non SBImageResults")
 

@@ -7,7 +7,7 @@ from typing import Callable, Any
 from modules.storysquad_storyboard.sb_rendering import SBImageResults
 import numpy as np
 from modules.storysquad_storyboard.constants import *
-
+from modules.storysquad_storyboard.env import *
 logging.basicConfig(filename="branched_renderer.log", level=1)
 logger: logging.Logger = logging.getLogger("BranchedRenderer")
 logger.setLevel(logging.DEBUG)
@@ -33,7 +33,7 @@ def sync_renderer(minimum_via_diff,
     # sb_prompt_second = sb_prompt[sb_prompt.total_seconds / 2:sb_prompt.total_seconds]
 
     async def async_renderer_wrapper():
-        n = 2  # Number of slices
+        n = len(STORYBOARD_RENDER_SERVER_URLS)
         duration_per_slice = seconds / n
         num_frames_per_slice = int(num_frames / n)
 
