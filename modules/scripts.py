@@ -526,8 +526,8 @@ def add_classes_to_gradio_component(comp):
     """
     this adds gradio-* to the component for css styling (ie gradio-button to gr.Button), as well as some others
     """
-
-    comp.elem_classes = ["gradio-" + comp.get_block_name(), *(comp.elem_classes or [])]
+    if hasattr(comp, 'elem_classes'):
+        comp.elem_classes = ["gradio-" + comp.get_block_name(), *(comp.elem_classes or [])]
 
     if getattr(comp, 'multiselect', False):
         comp.elem_classes.append('multiselect')
