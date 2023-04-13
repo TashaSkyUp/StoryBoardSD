@@ -3,6 +3,7 @@ import math
 import os
 import sys
 import warnings
+from typing import List, Union
 
 import torch
 import numpy as np
@@ -124,7 +125,7 @@ class StableDiffusionProcessing:
                  do_not_save_grid: bool = False,
                  extra_generation_params: Dict[Any, Any] = None,
                  overlay_images: Any = None,
-                 negative_prompt: str | List[str] = None,
+                 negative_prompt: Union[str, List[str]] = None,
                  eta: float = None,
                  do_not_reload_embeddings: bool = False,
                  denoising_strength: float = 0,
