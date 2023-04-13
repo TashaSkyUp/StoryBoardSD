@@ -652,6 +652,9 @@ class StoryBoardPrompt:
         return "".join([f"({w[0]}:{w[1]:.8f})" for w in prmpt])
 
     def _get_section_at_time(self, seconds):
+        if len(self._sections) == 1:
+            return 0
+
         section_second_is_in = len(self._times_sections_start) - 1
         for i, section_start_time in enumerate(self._times_sections_start):
             if seconds < section_start_time:
@@ -746,6 +749,9 @@ class StoryBoardSeed:
                 raise ValueError(f"Time is not in the interpolatable section: {time}")
 
         def get_i_seed(self, time):
+            """
+            Returns the interpolatable seed at the specified time.
+            """
 
             # find the percent of the time that has passed
             time_into_section_per = (time - self.i_time.x) / (self.i_time.y - self.i_time.x)
@@ -755,7 +761,17 @@ class StoryBoardSeed:
             # and some point between b and c at p2
             # so the space specified to traverse is 1-p1 + p2
 
-            space_in_between_seeds = 1 - self.i_seed_start.p + self.i_seed_end.p
+
+            if self.i_seed_start.x == self.i_seed_end.x and (self.i_seed_start.y == self.i_seed_end.y):
+                space_in_between_seeds = self.i_seed_end.p - self.i_seed_start.p
+            elif self.i_seed_start.y != self.i_seed_end.x:
+                raise ValueError(f"infinit space between seeds: {self.i_seed_start.y} != {self.i_seed_end.x}")
+            else:
+                space_in_between_seeds = (1-self.i_seed_start.p) + self.i_seed_end.p
+
+            if space_in_between_seeds == 0:
+                return self.i_seed_start
+
             start_seed_space_per = (1 - self.i_seed_start.p) / space_in_between_seeds
             end_seed_space_per = self.i_seed_end.p / space_in_between_seeds
 
@@ -852,14 +868,19 @@ class StoryBoardSeed:
         """
         >>> times = [0,4,8]
         >>> seeds = [1,2,3]
-        >>> StoryBoardSeed(seeds,times).get_seed_at_time(4.01)
-        InteropSeed(2, 3, 0.004999999999999893)
         >>> StoryBoardSeed(seeds,times).get_seed_at_time(4.0)
         InteropSeed(2, 3, 0)
         >>> StoryBoardSeed(seeds,times).get_seed_at_time(0.0)
         InteropSeed(1, 2, 0.0)
         >>> StoryBoardSeed(seeds,times).get_seed_at_time(1.0)
         InteropSeed(1, 2, 0.25)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(8.0)
+        InteropSeed(2, 3, 1)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(6.0)
+        InteropSeed(2, 3, 0.5)
+        >>> StoryBoardSeed(seeds,times).get_seed_at_time(6.01)
+        InteropSeed(2, 3, 0.5025)
+
         """
 
         # find the section
@@ -992,6 +1013,8 @@ class StoryBoardSeed:
         >>> test= StoryBoardSeed(
         ... seeds = [1,2,3],times = [0., 4., 8.]
         ... )
+        >>> test[6:8]
+        >>> test[0:2]
         >>> test[2:8]
         StoryBoardSeed(seeds=[InteropSeed(1, 2, 0.5), InteropSeed(2, 3, 0), InteropSeed(2, 3, 1.0)], times=[TimeSection(2.0, 4.0), TimeSection(4.0, 8.0)])
         >>> test= StoryBoardSeed(
@@ -999,6 +1022,8 @@ class StoryBoardSeed:
         ... )
         >>> test[2:7.9]
         StoryBoardSeed(seeds=[InteropSeed(1, 2, 0.5), InteropSeed(2, 3, 0), InteropSeed(2, 3, 0.9500000000000002)], times=[TimeSection(2.0, 4.0), TimeSection(4.0, 7.9)])
+        >>> test[2:4]
+        StoryBoardSeed(seeds=[InteropSeed(1, 2, 0.5), InteropSeed(2, 3, 0)], times=[TimeSection(2.0, 4.0)])
 
 
 
@@ -1020,6 +1045,7 @@ class StoryBoardSeed:
             new_times = UniqueList()
             new_sections = []
             sections_to_evaluate = []
+
             for section in self.interpolatable_sections:
                 if start_time in section:
                     sections_to_evaluate.append(section)
@@ -1038,10 +1064,10 @@ class StoryBoardSeed:
                 new_times.append(copy.deepcopy(section.i_time))
 
             new_times[0].x = start_time
-            new_times[0].y = new_times[1].x
+            new_times[0].y = new_times[0].y
 
             new_times[-1].y = stop_time
-            new_times[-1].x = new_times[-2].y
+            new_times[-1].x = new_times[-1].x
             # remove time sections that have 0 length
             new_times = [t for t in new_times if t.x != t.y]
             for tm in new_times:
@@ -1060,6 +1086,21 @@ class StoryBoardSeed:
 
     def _test_interpolatable_section(self):
         """
+        >>> from modules.storysquad_storyboard.storyboard import StoryBoardSeed
+        >>> TimeSection = StoryBoardSeed.TimeSection
+        >>> InteropSeed = StoryBoardSeed.InteropSeed
+        >>> i_seed_start = InteropSeed(1, 2, 0)
+        >>> i_seed_end = InteropSeed(2, 3, 1)
+        >>> i_time = TimeSection(0, 1, 0.5)
+        >>> #from storyboard.StoryBoardSeed import InterpolatableSection
+        >>> i_section = StoryBoardSeed.InterpolatableSection(i_seed_start, i_seed_end, i_time)
+        >>> import matplotlib.pyplot as plt
+        >>> plt.plot([i_section(i/100).p for i in range(100)])
+        >>> plt.plot([i_section(i/100).x for i in range(100)])
+        >>> plt.plot([i_section(i/100).y for i in range(100)])
+
+        >>> plt.show()
+
         >>> i_seed_start = StoryBoardSeed.InteropSeed(1, 2, 0)
         >>> i_seed_end = StoryBoardSeed.InteropSeed(2, 3, 1)
         >>> i_time = StoryBoardSeed.TimeSection(0, 1)
