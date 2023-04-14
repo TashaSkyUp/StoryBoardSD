@@ -88,8 +88,17 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
     batch_size = sb_iparams.render.batch_size
 
     if isinstance(prompt, list):
+        # if the prompt is a list, then use the batch count to determine the batch size
         if batch_size > len(prompt):
             batch_size = len(prompt)
+        # if the prompt is not the same length as the batch size, then duplicate the prompt
+        if not isinstance(negative_prompt, list):
+            negative_prompt = [negative_prompt]
+        # if the negative prompt is not the same length as the prompt, then duplicate the negative prompt
+        if len(negative_prompt) != len(prompt):
+            if len(negative_prompt) == 1:
+                negative_prompt = negative_prompt * len(prompt)
+
     else:
         batch_size = 1
 
@@ -97,7 +106,29 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
     sampler_name = sb_iparams.render.sampler_name
 
     # convert the render params to the StableDiffusionProcessingTxt2Img params
-    if "shared" not in globals():
+    if "StableDiffusionProcessingTxt2Img"  in globals():
+        tmp = StableDiffusionProcessingTxt2Img(
+            sd_model=shared.sd_model,
+            outpath_samples=opts.outdir_samples or opts.outdir_txt2img_samples,
+            outpath_grids=opts.outdir_grids or opts.outdir_txt2img_grids,
+            prompt=prompt,
+            styles=["None", "None"],
+            negative_prompt=negative_prompt if type(negative_prompt) is not list else negative_prompt,
+            seed=seed,
+            subseed=subseed,
+            subseed_strength=subseed_strength,  # if type(subseed_strength) is not list else subseed_strength[0],
+            sampler_name=sampler_name if type(sampler_name) is not list else sampler_name[0],
+            batch_size=batch_size if type(batch_size) is not list else batch_size[0],
+            n_iter=1,
+            steps=steps if type(steps) is not list else steps[0],
+            cfg_scale=cfg_scale if type(cfg_scale) is not list else cfg_scale[0],
+            width=width if type(width) is not list else width[0],
+            height=height if type(height) is not list else height[0],
+            restore_faces=restore_faces if type(restore_faces) is not list else restore_faces[0],
+            tiling=tiling if type(tiling) is not list else tiling[0],
+            seed_enable_extras=True
+        )
+    else:
         shared = lambda: None
         shared.sd_model = None
         opts = lambda: None
@@ -105,52 +136,29 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
         opts.outdir_grids = None
         opts.outdir_txt2img_samples = None
         opts.outdir_txt2img_grids = None
-        try:
-            tmp = StableDiffusionProcessingTxt2Img(
-                sd_model=shared.sd_model,
-                outpath_samples=opts.outdir_samples or opts.outdir_txt2img_samples,
-                outpath_grids=opts.outdir_grids or opts.outdir_txt2img_grids,
-                prompt=prompt,
-                styles=["None", "None"],
-                negative_prompt=negative_prompt if type(negative_prompt) is not list else negative_prompt[0],
-                seed=seed,
-                subseed=subseed,
-                subseed_strength=subseed_strength,  # if type(subseed_strength) is not list else subseed_strength[0],
-                sampler_name=sampler_name if type(sampler_name) is not list else sampler_name[0],
-                batch_size=batch_size if type(batch_size) is not list else batch_size[0],
-                n_iter=1,
-                steps=steps if type(steps) is not list else steps[0],
-                cfg_scale=cfg_scale if type(cfg_scale) is not list else cfg_scale[0],
-                width=width if type(width) is not list else width[0],
-                height=height if type(height) is not list else height[0],
-                restore_faces=restore_faces if type(restore_faces) is not list else restore_faces[0],
-                tiling=tiling if type(tiling) is not list else tiling[0],
-                seed_enable_extras=True
-            )
-        except NameError as e:
-            #print(e)
-            if "StableDiffusionProcessingTxt2Img" in str(e):
-                # likely doing a test so just return a dummy object
-                tmp = lambda: None
-                tmp.sd_model = shared.sd_model
-                tmp.outpath_samples = opts.outdir_samples or opts.outdir_txt2img_samples
-                tmp.outpath_grids = opts.outdir_grids or opts.outdir_txt2img_grids
-                tmp.prompt = [prompt] if isinstance(prompt, str) else prompt
-                tmp.styles = ["None", "None"]
-                tmp.negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
-                tmp.seed = seed
-                tmp.subseed = subseed
-                tmp.subseed_strength = subseed_strength
-                tmp.sampler_name = sampler_name if isinstance(sampler_name, str) else sampler_name[0]
-                tmp.batch_size = 1
-                tmp.n_iter = 1
-                tmp.steps = 6
-                tmp.cfg_scale = 7.0
-                tmp.width = 512
-                tmp.height = 512
-                tmp.restore_faces = False
-                tmp.tiling = False
-                tmp.seed_enable_extras = True
+
+
+        # likely doing a test so just return a dummy object
+        tmp = lambda: None
+        tmp.sd_model = shared.sd_model
+        tmp.outpath_samples = opts.outdir_samples or opts.outdir_txt2img_samples
+        tmp.outpath_grids = opts.outdir_grids or opts.outdir_txt2img_grids
+        tmp.prompt = [prompt] if isinstance(prompt, str) else prompt
+        tmp.styles = ["None", "None"]
+        tmp.negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+        tmp.seed = seed
+        tmp.subseed = subseed
+        tmp.subseed_strength = subseed_strength
+        tmp.sampler_name = sampler_name if isinstance(sampler_name, str) else sampler_name[0]
+        tmp.batch_size = 1
+        tmp.n_iter = 1
+        tmp.steps = 6
+        tmp.cfg_scale = 7.0
+        tmp.width = 512
+        tmp.height = 512
+        tmp.restore_faces = False
+        tmp.tiling = False
+        tmp.seed_enable_extras = True
 
     if isinstance(tmp.prompt, str):
         tmp.prompt = [tmp.prompt]
@@ -202,6 +210,10 @@ async def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -
     """
     Call the render server endpoint to render the images. The servers are chosen in a round-robin fashion.
     """
+    if env.STORYBOARD_API_ROLE == "ui_only":
+        if not AWS_SERVER_IPS:
+            await setup_render_servers()
+
     server_url = get_next_server_url()
     p = get_sd_txt_2_image_params_from_story_board_params(params)
     # p.scripts = modules.scripts.scripts_txt2img
@@ -212,6 +224,36 @@ async def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -
     generation_info_js = processed["parameters"]
     sb_results = create_sb_image_results(images, generation_info_js)
     return sb_results
+
+
+async def storyboard_call_endpoint_split_batch(params: SBMultiSampleArgs, batch_size: int, *args,
+                                               **kwargs) -> SBImageResults:
+    """
+    Call the render server endpoint to render the images in batches. The servers are chosen in a round-robin fashion.
+    """
+    import time
+    import copy
+    if env.STORYBOARD_API_ROLE == "ui_only":
+        if not AWS_SERVER_IPS:
+            await setup_render_servers()
+    start_time = time.time()
+    all_images = []
+    all_json = []
+    async_tasks = []
+    for i in range(0, len(params), batch_size):
+        batch_params = copy.copy(params[i:i + batch_size])
+        batch_params.render.batch_size = batch_size
+        task = storyboard_call_endpoint(batch_params, *args, **kwargs)
+        async_tasks.append(task)
+
+    async_results = await asyncio.gather(*async_tasks)
+
+    out_res = async_results[0]
+    for result in async_results[1:]:
+        out_res += result
+    end_time = time.time()
+    print(f"Total time: {end_time - start_time}")
+    return out_res
 
 
 def get_next_server_url() -> str:
@@ -239,7 +281,8 @@ def create_sb_image_results(images: List[bytes], generation_info_js: dict) -> SB
     Create an SBImageResults object from the given image data and generation information.
     """
     if "shared" in globals():
-        shared.total_tqdm.clear()
+        if hasattr(shared, "total_tqdm"):
+            shared.total_tqdm.clear()
 
     generation_info_js["images"] = images
     # if opts.do_not_show_images:
@@ -285,46 +328,24 @@ async def call_json_api_endpoint_async(url: str, data: Any) -> dict:
         res = await client.post(url=url,
                                 data=json.dumps(data),
                                 headers=headers)
-
+    if res.status_code != 200:
+        print(f"Error: {res.status_code}")
+        print(res.text)
+        return None
     rj = res.json()
     rj["images"] = [decode_base64_to_image(i) for i in rj["images"]]
     return rj
 
 
-async def storyboard_call_endpoint_split_batch(params: SBMultiSampleArgs, batch_size: int, *args,
-                                               **kwargs) -> SBImageResults:
-    """
-    Call the render server endpoint to render the images in batches. The servers are chosen in a round-robin fashion.
-    """
-    import time
-    start_time = time.time()
-    all_images = []
-    all_json = []
-    async_tasks = []
-    for i in range(0, len(params), batch_size):
-        batch_params = params[i:i + batch_size]
-        task = storyboard_call_endpoint(batch_params, *args, **kwargs)
-        async_tasks.append(task)
-
-    async_results = await asyncio.gather(*async_tasks)
-
-    out_res = async_results[0]
-    for result in async_results[1:]:
-        out_res += result
-    end_time = time.time()
-    print(f"Total time: {end_time - start_time}")
-    return out_res
-
-
 if __name__ == "__main__":
     # requires StoryBoardAPI server running locallay on port 7860
     # from modules.processing import StableDiffusionProcessingTxt2Img
-    test_prompts = ["red car",
+    test_prompts = ["(red:1.2) car",
                     "blue boat",
                     "green bush",
                     "yellow jacket",
                     "orange sunrise",
-                    "purple flower",
+                    "purple (flower:1.2)",
                     "pink dress",
                     "black cat",
                     "white dog"]
@@ -465,4 +486,5 @@ else:
     from modules.api.models import StableDiffusionTxt2ImgProcessingAPI, StableDiffusionProcessingTxt2Img
 
     wrap_around = 0
-    setup_render_servers()
+    # add an asyncio task
+    # asyncio.create_task(setup_render_servers())
