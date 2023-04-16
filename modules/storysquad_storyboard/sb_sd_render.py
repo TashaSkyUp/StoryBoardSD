@@ -336,8 +336,7 @@ async def call_json_api_endpoint_async(url: str, data: Any) -> dict:
     rj["images"] = [decode_base64_to_image(i) for i in rj["images"]]
     return rj
 
-
-if __name__ == "__main__":
+def do_cli_tests():
     # requires StoryBoardAPI server running locallay on port 7860
     # from modules.processing import StableDiffusionProcessingTxt2Img
     test_prompts = ["(red:1.2) car",
@@ -474,8 +473,12 @@ if __name__ == "__main__":
         result[0].all_images[0].show()
         result[1].all_images[0].show()
 
-    doctest.testmod()
 
+if __name__ != "__main__" and env.STORYBOARD_PRODUCT == "soloui":
+    # we are in solo mode, so we need to not import anything automatic1111 gradio
+    pass
+elif __name__ == "__main__" and env.STORYBOARD_PRODUCT != "soloui":
+    do_cli_tests()
 else:
     # these are down here so that the doctests can run without importing the rest of the modules
     import modules.scripts
