@@ -132,7 +132,7 @@ tifffile==2023.2.3
 timm==0.6.7
 tokenizers==0.12.1
 toolz==0.12.0
-torch==1.12.1+cu113
+torch
 torchdiffeq==0.2.3
 torchmetrics==0.11.1
 torchsde==0.2.5

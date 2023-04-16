@@ -17,7 +17,8 @@ STORYBOARD_RENDER_SERVER_URLS = \
                # "http://18.225.4.178:7860/sdapi/v1/txt2img", # AWS SBR 4
                # "http://18.222.67.149:7860/sdapi/v1/txt2img", # AWS SBR 5
                ])
-
+if isinstance(STORYBOARD_RENDER_SERVER_URLS, str):
+    STORYBOARD_RENDER_SERVER_URLS = [STORYBOARD_RENDER_SERVER_URLS]
 STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "app")
 # STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "sd_server")
 # STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "ui_only")

@@ -1,5 +1,5 @@
 from modules.storysquad_storyboard.branched_renderer import compose_storyboard_render_dev
-
+MAX_SB_SIZE = 3
 print(__name__)
 from modules.storysquad_storyboard.sb_rendering import *
 import gradio.components
@@ -192,11 +192,14 @@ class StoryBoardGradio:
         #from .sb_sd_render import storyboard_call_endpoint as storyboardtmp
         if STORYBOARD_API_ROLE == "ui_only":
             from .sb_sd_render import storyboard_call_endpoint as storyboardtmp
+            from .sb_sd_render import storyboard_call_endpoint_split_batch as storyboardtmp2
         elif STORYBOARD_API_ROLE == "app":
             from .sb_sd_render import storyboard_call_multi as storyboardtmp
+            from .sb_sd_render import storyboard_call_multi as storyboardtmp2
         elif STORYBOARD_API_ROLE == "sd_server":
             pass
-        self.storyboard = storyboardtmp
+        self.sd_sb_renderer_batched = storyboardtmp
+        self.sd_sb_renderer_s_batch = storyboardtmp2
 
         # assign imported functionality to be easy to access
         self.setup_progressbar = setup_progressbar
@@ -476,12 +479,12 @@ class StoryBoardGradio:
 
 
         complete_mp4_f_path = compose_storyboard_render_dev(self.DefaultRender,
-                                                                   storyboard_params,
-                                                                   ui_params,
-                                                                   self.storyboard,
-                                                                   test,
-                                                                   early_stop,
-                                                                   )
+                                                            storyboard_params,
+                                                            ui_params,
+                                                            self.sd_sb_renderer_batched,
+                                                            test,
+                                                            early_stop,
+                                                            )
         return [all_state,complete_mp4_f_path]
 
     def on_render_storyboard(self, *args):
@@ -514,7 +517,7 @@ class StoryBoardGradio:
                                                                    test,
                                                                    test_render,
                                                                    ui_params,
-                                                                   SBIMA_render_func=self.storyboard,
+                                                                   SBIMA_render_func=self.sd_sb_renderer_batched,
                                                                    base_SBIMulti=self.get_sb_multi_sample_params_from_ui(ui_params)
                                                                    )
         return [all_state,complete_mp4_f_path]
@@ -532,7 +535,7 @@ class StoryBoardGradio:
         # this is the function that is called by the image explorer
         # it is called with a SBMultiSampleArgs object
 
-        results: SBImageResults = await self.storyboard(params, 0)
+        results: SBImageResults = await self.sd_sb_renderer_batched(params, 0)
         out_image_exp_params = results.img_hyper_params_list[-9:]
         return results.all_images[-9:], out_image_exp_params[-9:]
 
@@ -588,7 +591,12 @@ class StoryBoardGradio:
             story_board_images: [] = list(args[:3])
             cell_params = all_state["im_explorer_hparams"][idx]
             render_params = self.get_sb_multi_sample_params_from_ui(ui_state_comps).render
-            sb_idx: int = all_state["story_board"].index(None)
+            if all_state["story_board"]==[]:
+                all_state["story_board"] = [None]*MAX_SB_SIZE
+            try:
+                sb_idx: int = all_state["story_board"].index(None)
+            except ValueError:
+                sb_idx = -1
 
         if "set simple params":
             all_state["history"].append((cell_params, 4))
@@ -600,7 +608,7 @@ class StoryBoardGradio:
             call_args.hyper = cell_params
             call_args.render.batch_size = 1
             # re-render the storyboard image
-            sb_result = await self.storyboard(call_args, 0)
+            sb_result = await self.sd_sb_renderer_batched(call_args, 0)
             # update story_board_images
             story_board_images[sb_idx] = sb_result.all_images[0]
 
@@ -695,31 +703,31 @@ class StoryBoardGradio:
 
             run_test = False
             out_call_args: SBMultiSampleArgs = SBMultiSampleArgs(render=base_params._render, hyper=[])
-            #out_call_args.render.batch_size = 2
-            sb_image_results_tasks = []
-            for ii in [2,2,2,3]:
-                #for i in range(MAX_IEXP_SIZE):
-                for i in range(ii):
-                    tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
-                    tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
 
-                    tmp.prompt = [tmp_prompt]
-                    tmp.seed = [modules.processing.get_fixed_seed(-1)]
+            if base_params.hyper[0].prompt is None or base_params.hyper[0].prompt == "" or base_params.hyper[0].prompt == []:
+                run_test = True
+                print("running test")
+                base_params._hyper[0].prompt = "this is a test prompt that jumped over a lazy dog and then ran away"
+                base_params._hyper[0].negative_prompt = "(mutant :1.2) (confusing :1.2) blurry strange odd two heads (amature:1.2) person (meme:1.2)"
 
-                    out_call_args += tmp
-                    out_sb_image_hyper_params.append(tmp)
-                oca = copy.copy(out_call_args)
-                oca.render.batch_size = ii
-                sb_image_results_tasks.append(self.storyboard(oca.combined))
+            for i in range(MAX_IEXP_SIZE):
+                tmp: SBIHyperParams = copy.deepcopy(base_params._hyper[0])
+                tmp_prompt = random_pompt_word_weights(base_params._hyper[0].prompt)
 
-            all_res= await asyncio.gather(*sb_image_results_tasks)
-            out_images=[]
-            for sb_image_results in all_res:
-                out_images.extend(sb_image_results.all_images)
+                tmp.prompt = [tmp_prompt]
+                tmp.seed = [modules.processing.get_fixed_seed(-1)]
+
+                out_call_args += tmp
+                out_sb_image_hyper_params.append(tmp)
+
+            sb_image_results: SBImageResults = self.sd_sb_renderer_s_batch(out_call_args.combined,1)
+
+            out_images = await sb_image_results
+            out_images = out_images.all_images
 
             # remove the image grid from the result if it exists
             if len(out_images) != MAX_IEXP_SIZE:
-                out_images = out_images[:MAX_IEXP_SIZE]
+                out_images = out_images[1:]
 
             return out_images, out_sb_image_hyper_params
 

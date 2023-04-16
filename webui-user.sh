@@ -10,7 +10,16 @@
 #clone_dir="stable-diffusion-webui"
 
 # Commandline arguments for webui.py, for example: export COMMANDLINE_ARGS="--medvram --opt-split-attention"
-#export COMMANDLINE_ARGS=""
+export COMMANDLINE_ARGS="--disable-safe-unpickle --xformers --port 7860 --nowebui --server-name 0.0.0.0 --listen"
+export STORYBOARD_BENCHMARKS_PATH=/home/ubuntu/StoryBoardSD/SB_BENCH
+export STORYBOARD_RENDER_PATH=/home/ubuntu/StoryBoardSD/SB_RENDERS
+export STORYBOARD_DEV_MODE=False
+export STORYBOARD_PRODUCT=clash
+export STORYBOARD_FFMPEG_PATH=/usr/bin/ffmpeg
+export GRADIO_SERVER_NAME=0.0.0.0
+export GRADIO_SERVER_PORT=7996
+export STORYBOARD_API_ROLE=sd_server
+export STORYBOARD_API_MODEL_PATH=/home/ubuntu/StoryBoardSD/models/Stable-diffusion/v2-1_512-ema-pruned.ckpt
 
 # python3 executable
 #python_cmd="python3"

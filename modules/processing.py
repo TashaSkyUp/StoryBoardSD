@@ -3,6 +3,7 @@ import math
 import os
 import sys
 import warnings
+from typing import List, Union
 
 import torch
 import numpy as np
@@ -124,7 +125,7 @@ class StableDiffusionProcessing:
                  do_not_save_grid: bool = False,
                  extra_generation_params: Dict[Any, Any] = None,
                  overlay_images: Any = None,
-                 negative_prompt: str | List[str] = None,
+                 negative_prompt: Union[str, List[str]] = None,
                  eta: float = None,
                  do_not_reload_embeddings: bool = False,
                  denoising_strength: float = 0,
@@ -515,7 +516,7 @@ def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iter
 
     generation_params_text = ", ".join([k if k == v else f'{k}: {generation_parameters_copypaste.quote(v)}' for k, v in generation_params.items() if v is not None])
 
-    negative_prompt_text = "\nNegative prompt: " + p.all_negative_prompts[index] if p.all_negative_prompts[index] else ""
+    negative_prompt_text = "\nNegative prompt: " + p.all_negative_prompts[index] if isinstance(p.all_negative_prompts, list) and len(p.all_negative_prompts) > index else ""
 
     return f"{all_prompts[index]}{negative_prompt_text}\n{generation_params_text}".strip()
 
