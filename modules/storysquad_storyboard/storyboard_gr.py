@@ -1,11 +1,13 @@
-from modules.storysquad_storyboard.branched_renderer import compose_storyboard_render_dev
+
 MAX_SB_SIZE = 3
 print(__name__)
-from modules.storysquad_storyboard.sb_rendering import *
+
 import gradio.components
 import json
 from dataclasses import dataclass
 from typing import List
+
+from modules.storysquad_storyboard.sb_rendering import *
 
 keys_for_ui_in_order = ["prompt", "negative_prompt", "steps", "sampler_index", "width", "height", "restore_faces",
                          "tiling", "batch_count", "batch_size",
@@ -25,24 +27,10 @@ class BenchMarkSettings:
 
 
 if __name__ != "__main__" and __name__ != "storyboard_gr":
-    from modules.storysquad_storyboard.storyboard import DEFAULT_HYPER_PARAMS_DICT
-    from modules.storysquad_storyboard.sb_sd_render import *
-    import modules.storysquad_storyboard.env as sb_env
 
-    import random
-    import doctest
-    import numpy as np
-    from typing import List
-    import copy
-    from collections import OrderedDict
-    import modules
     from modules.processing import StableDiffusionProcessingTxt2Img
 
-    DEV_MODE = sb_env.STORYBOARD_DEV_MODE
-    if DEV_MODE:
-        ONLY_USE_NOUNS = False
-    else:
-        ONLY_USE_NOUNS = False
+
 else:
     # TODO: figure out how to load the correct modules when running this file directly for doctests
     import copy
@@ -173,7 +161,10 @@ def get_test_storyboard():
 
 
 class StoryBoardGradio:
+
     def __init__(self):
+        from collections import OrderedDict as OrderedDict
+        import modules.storysquad_storyboard.env as env
         class comp_helper:
             story_squad_interface = None
             render_button = None
@@ -181,12 +172,14 @@ class StoryBoardGradio:
             robot_dreams = None
             files_interface = None
 
+        self.solo_mode = env.STORYBOARD_PRODUCT=="soloui"
         self.comp_helper = comp_helper
 
         self.DefaultRender = DefaultRender()
 
         # import some functionality from the provided webui
-        from modules.ui import setup_progressbar, create_seed_inputs
+        if not self.solo_mode:
+            from modules.ui import setup_progressbar, create_seed_inputs
 
         # import custom sampler caller and assign it to be easy to access
         #from .sb_sd_render import storyboard_call_endpoint as storyboardtmp
@@ -201,9 +194,10 @@ class StoryBoardGradio:
         self.sd_sb_renderer_batched = storyboardtmp
         self.sd_sb_renderer_s_batch = storyboardtmp2
 
-        # assign imported functionality to be easy to access
-        self.setup_progressbar = setup_progressbar
-        self.create_seed_inputs = create_seed_inputs
+        if not self.solo_mode:
+            # assign imported functionality to be easy to access
+            self.setup_progressbar = setup_progressbar
+            self.create_seed_inputs = create_seed_inputs
 
         # initial state assignment
         self.all_components = {}
@@ -219,7 +213,9 @@ class StoryBoardGradio:
 
         with self.get_story_squad_ui() as wrapped_ui:
             self.StSqUI = wrapped_ui
+            tmp = self.get_story_squad_ui
             self.get_story_squad_ui = lambda: self.StSqUI
+            self.get_just_story_squad_ui = tmp
             self.setup_story_board_events()
     def drag_image_in(self, idx, img, all_state, ui_prompt, negative_prompt):
         """
@@ -1222,6 +1218,7 @@ class StoryBoardGradio:
             if cur_img_idx >= 9: break
 
     def create_img_exp_group(self):
+        from collections import OrderedDict as OrderedDict
         import gradio as gr
         gr_comps = self.all_components
         if "im_explorer" not in gr_comps:
@@ -1310,8 +1307,38 @@ class TestStoryboardGradio(unittest.TestCase):
         prompt = "Once upon a time..."
         negative_prompt = "Do not use any magic."
         updated_state, updated_img, updated_prompt, updated_negative_prompt = sb.drag_image_in(idx, img, all_state, prompt, negative_prompt)
+def start_gradio():
+    import gradio as gr
+    import modules.storysquad_storyboard.env as sb_env
+    from modules.storysquad_storyboard.storyboard import DEFAULT_HYPER_PARAMS_DICT
+
+    import modules.storysquad_storyboard.env as sb_env
+
+    import random
+    import doctest
+    import numpy as np
+    from typing import List
+    import copy
+    import modules
+    tmp = StoryBoardGradio()
+
+    ui = tmp.get_story_squad_ui()
+    ui.launch(share=True, inbrowser=True, debug=True)
 
 if __name__ == '__main__':
+    import modules.storysquad_storyboard.env as sb_env
+    DEV_MODE = sb_env.STORYBOARD_DEV_MODE
+    if DEV_MODE:
+        ONLY_USE_NOUNS = False
+    else:
+        ONLY_USE_NOUNS = False
+    if sb_env.STORYBOARD_PRODUCT == "soloui":
+        from modules.storysquad_storyboard.sb_sd_render import *
+        start_gradio()
+        exit()
+
+    from modules.storysquad_storyboard.branched_renderer import compose_storyboard_render_dev
+
     import doctest
     import random
     import gradio as gr
