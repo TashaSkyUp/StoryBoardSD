@@ -160,12 +160,12 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
         tmp.subseed = subseed
         tmp.subseed_strength = subseed_strength
         tmp.sampler_name = sampler_name if isinstance(sampler_name, str) else sampler_name[0]
-        tmp.batch_size = 1
+        tmp.batch_size = batch_size
         tmp.n_iter = 1
-        tmp.steps = 6
+        tmp.steps = steps
         tmp.cfg_scale = 7.0
-        tmp.width = 512
-        tmp.height = 512
+        tmp.width = width
+        tmp.height = height
         tmp.restore_faces = False
         tmp.tiling = False
         tmp.seed_enable_extras = True

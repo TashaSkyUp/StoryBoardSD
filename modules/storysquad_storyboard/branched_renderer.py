@@ -35,7 +35,7 @@ def sync_renderer(minimum_via_diff,
 
     async def async_renderer_wrapper():
         n = len(STORYBOARD_RENDER_SERVER_URLS)
-        n = 8
+        #n = 8
         duration_per_slice = seconds / n
         num_frames_per_slice = int(num_frames / n)
 
@@ -514,14 +514,15 @@ if __name__ == "__main__":
 
         storyboard_params = get_test_storyboard(storyboard_params)
 
+
         # array that sets up paramaters that should come from the ui
         test_ui_params = [speach,
                           sb_neg_prompt,
                           7,
                           3,
-                          512, # width
-                          512, # height
-                          6, # steps
+                          1024, # width
+                          768, # height
+                          8, # steps
                           7, #
                           8, #
                           9, #
@@ -564,8 +565,10 @@ if __name__ == "__main__":
     from modules.storysquad_storyboard.sb_sd_render import storyboard_call_endpoint, shutdown_all_render_servers
 
     render_params = DefaultRender()  # only used if test is False
-    render_params.fps = 30  # only used if test is False
-    render_params.batch_size = 30  # only used if test is False
+    render_params.fps = 4  # only used if test is False
+    #render_params.batch_size = 30  # only used if test is False
+    DefaultRender.batch_size = 9  # only used if test is False
+
 
     compose_storyboard_render_dev(render_params,
                                   storyboard_params,
@@ -573,4 +576,6 @@ if __name__ == "__main__":
                                   storyboard_call_endpoint,
                                   test=test_prompt
                                   )
+    import modules.storysquad_storyboard.sb_rendering as sb_rendering
+
     asyncio.run(shutdown_all_render_servers())

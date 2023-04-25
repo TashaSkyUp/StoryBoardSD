@@ -822,7 +822,7 @@ random_small_quick_test_neg_prompt = "confusing blurry mutant disfigured caption
                               "boring "
 
 # a nice 50 word story
-fifty_word_story1 = "Once upon a time, there was a village that was plagued by a (fearsome dragon:1.5). Every day, the (dragon:1.5) " \
+fifty_word_story1 = "Once upon a time, there was a village that was plagued by a (fearsome dragon:1.25). Every day, the (dragon:1.25) " \
                    "would terrorize the villagers by demanding a (virgin:1.5) to eat. The villagers lived in fear of the " \
                    "dragon and were afraid to leave their homes. Until one day when they had enough. They decided to " \
                    "fight back, the rest is history."
@@ -837,7 +837,7 @@ fifty_word_story3 = "Once upon a time, there was a village that was plagued by a
                    "dragon and were afraid to leave their homes. Until one day when they had enough. They decided to " \
                    "(fight:1.2) (back:1.2), the rest is history."
 
-fifty_word_story_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover amateure plain"
+fifty_word_story_neg_prompt = "nude sexy confusing blurry mutant disfigured caption text movie poster book cover amateur plain"
 
 test_img_info = json.loads('{"parameters": "(A:1.0389916936335184) (robot:0.9737987777913438)\\nNegative prompt: '
                            'confusing amateur strange odd ugly mutant '
