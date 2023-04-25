@@ -498,7 +498,7 @@ if __name__ == "__main__":
     elif choice == "s":  # short test
         raise NotImplementedError
 
-    elif choice == "5":  # long test
+    elif choice == "5":
         import modules.storysquad_storyboard.constants as sb_constants
         from modules.storysquad_storyboard.testing import get_test_storyboard
         print("using quick 50")
@@ -507,16 +507,29 @@ if __name__ == "__main__":
                              sb_constants.fifty_word_story2,
                              sb_constants.fifty_word_story3]
 
-        speach = " ".join([i for i in storyboard_params[0] if not i.isdigit()])
-        sbp_out = get_test_storyboard(storyboard_params)
+        sb_neg_prompt = sb_constants.fifty_word_story_neg_prompt
+        speach = "".join([i for i in storyboard_params[0] if not i.isdigit()])
+        # replace paranthesis with "" and : with ""
+        speach = speach.replace("(", "").replace(")", "").replace(":", "")
 
-        storyboard_params = sbp_out
+        storyboard_params = get_test_storyboard(storyboard_params)
 
-        # remove all numbers from the prompt
-
-
-
-        test_ui_params = [speach, "", 7, 3, 512, 512, 6, 7, 8, 9, 10, 11, 12, 7.5]  # only used if test is False
+        # array that sets up paramaters that should come from the ui
+        test_ui_params = [speach,
+                          sb_neg_prompt,
+                          7,
+                          3,
+                          512, # width
+                          512, # height
+                          6, # steps
+                          7, #
+                          8, #
+                          9, #
+                          10, #
+                          11, #
+                          12, #
+                          7.5 # cfg scale
+                          ]  # only used if test is False
 
 
     server_choice = input("server:\n\t(m)ock\n\t(l)ocal\n\t(r)eal\n")
@@ -540,7 +553,7 @@ if __name__ == "__main__":
         sb_env.STORYBOARD_USE_AWS = True
         sb_env.STORYBOARD_API_ROLE = "ui_only"
 
-    elif server_choice == "l":  # use the local server controllor to test
+    elif server_choice == "l":  # use the local server to test
         import modules.storysquad_storyboard.env as sb_env
 
         sb_env.STORYBOARD_PRODUCT = "soloui"
