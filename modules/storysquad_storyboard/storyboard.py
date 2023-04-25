@@ -159,7 +159,7 @@ def get_prompt_words_and_weights_list(prompt) -> List[List[str]]:
     """
     if prompt == "":
         raise ValueError("prompt cannot be empty")
-    prompt = remove_all_but_words(prompt)
+    prompt = sanitize_prompt(prompt)
     words = prompt.split(" ")
     possible_word_weight_pairs = [i.split(":") for i in words]
     w = 1.0
@@ -208,7 +208,7 @@ def get_prompt_words_and_weights_list_new(prompt) -> List[List[str]]:
     >>> get_prompt_words_and_weights_list_new("hello:5 (world:0.2) how (are) you")
     [('hello', 5.0), ('world', 0.2), ('how', 1.0), ('are', 1.0), ('you', 1.0)]
     """
-    prompt = remove_all_but_words(prompt)
+    prompt = sanitize_prompt(prompt)
     words = prompt.split(" ")
     possible_word_weight_pairs = [i.split(":") for i in words]
     return [
@@ -237,6 +237,7 @@ def sanitize_prompt(prompt):
     return prompt.strip()
 
 
+
 def remove_all_but_words(prompt):
     """
         >>> remove_all_but_words("Get :1.2 busy!:1. living:0.4 or:0 get: '0 busy:0' dying:0.6.... or don't.")
@@ -249,7 +250,7 @@ def remove_all_but_words(prompt):
         for p in prompt:
             res.append(remove_all_but_words(p))
     else:
-        chars = re.compile("(?!(?<=[a-z])'[a-z])[^^A-Za-z\s]")
+        chars = re.compile("(?!(?<=[a-z])'[a-z])[^A-Za-z\s]")
         clean = chars.sub(' ', prompt)
         res = ' '.join(clean.split()).strip()
 
@@ -314,7 +315,7 @@ class StoryBoardPrompt:
         if prompts == "doctests":
             self._prompts = self._testing_dirty_prompts
 
-        self._sanitized_prompts = [remove_all_but_words(p) for p in self._prompts]
+        self._sanitized_prompts = [self._sanitize_prompt(p) for p in self._prompts]
 
         self._words_and_weights = [self._get_prompt_words_and_weights_list(p) for p in
                                    self._sanitized_prompts]
@@ -427,7 +428,7 @@ class StoryBoardPrompt:
 
     @staticmethod
     def _get_prompt_words_and_weights_list(prompt) -> List[Tuple[str, float]]:
-        words = prompt.split(" ")
+        words = str(prompt).split(" ")
         possible_word_weight_pairs = [i.split(":") for i in words]
 
         out: List[Tuple[str, float]] = []
@@ -457,7 +458,7 @@ class StoryBoardPrompt:
         ...     SB._get_sections(SB._words_and_weights)
         ... except Exception as e:
         ...     print(e.message)
-        [[[('dog', 1.0), ('cat', 1.0)], [('dog', 1.0), ('cat', 1.0)]], [[('dog', 1.0), ('cat', 1.0)], [('dog', 1.0), ('cat', 1.0)]]]
+        [[[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 1.0)]], [[('dog', 1.0), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]]
         """
         sections: List[List[List[Tuple[str, float]]]] = [
             [words_and_weights_list[0], words_and_weights_list[1]],
@@ -520,8 +521,8 @@ class StoryBoardPrompt:
         ...     for section in sections:
         ...         print(section)
         ...     break
-        [[('dog', 1.0), ('cat', 1.0)], [('dog', 1.0), ('cat', 1.0)], [('dog', 1.0), ('cat', 1.0)], [('dog', 1.0), ('cat', 1.0)]]
-        [[('dog', 1.0), ('cat', 1.0)], [('dog', 1.0), ('cat', 1.0)], [('dog', 1.0), ('cat', 1.0)], [('dog', 1.0), ('cat', 1.0)]]
+        [[('dog', 1.0), ('cat', 0.0)], [('dog', 1.0), ('cat', 0.3333333333333333)], [('dog', 1.0), ('cat', 0.6666666666666666)], [('dog', 1.0), ('cat', 1.0)]]
+        [[('dog', 1.0), ('cat', 1.0)], [('dog', 0.6666666666666667), ('cat', 1.0)], [('dog', 0.33333333333333337), ('cat', 1.0)], [('dog', 0.0), ('cat', 1.0)]]
         """
         # get the weights for each word of each prompt in the prompts list returns a list of lists of tuples
         # words_and_weights_for_prompts = [StoryBoardPrompt._get_prompt_words_and_weights_list(p) for p in prompts]
@@ -557,7 +558,7 @@ class StoryBoardPrompt:
         ...     SB._get_prompt_at_time(0.0)
         ... except Exception as e:
         ...     raise e
-        '(dog:1.00000000)(cat:1.00000000)'
+        '(dog:1.00000000)(cat:0.00000000)'
         >>> try:
         ...     SB = StoryBoardPrompt("doctests",[0.5,0.5])
         ...     SB._get_prompt_at_time(0.5)
@@ -569,7 +570,7 @@ class StoryBoardPrompt:
         ...     SB._get_prompt_at_time(0.75)
         ... except Exception as e:
         ...     raise e
-        '(dog:1.20000000)(cat:1.20000000)'
+        '(dog:0.70000000)(cat:1.20000000)'
 
         """
 
