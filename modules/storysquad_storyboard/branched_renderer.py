@@ -8,6 +8,7 @@ from modules.storysquad_storyboard.sb_rendering import SBImageResults
 import numpy as np
 from modules.storysquad_storyboard.constants import *
 from modules.storysquad_storyboard.env import *
+
 logging.basicConfig(filename="branched_renderer.log", level=1)
 logger: logging.Logger = logging.getLogger("BranchedRenderer")
 logger.setLevel(logging.DEBUG)
@@ -34,6 +35,7 @@ def sync_renderer(minimum_via_diff,
 
     async def async_renderer_wrapper():
         n = len(STORYBOARD_RENDER_SERVER_URLS)
+        n = 8
         duration_per_slice = seconds / n
         num_frames_per_slice = int(num_frames / n)
 
@@ -329,15 +331,15 @@ def do_compose_setup(my_ren_p,
     my_ren_p.num_frames = my_ren_p.num_frames_per_section * my_ren_p.sections
     my_ren_p.seconds = vo_len_secs
 
-    sb_prompts = [i.prompt for i in storyboard_params]
-    sb_seeds_list = [i.seed for i in storyboard_params]
+    sb_prompts = [i.prompt for i in storyboard_params if i is not None]
+    sb_seeds_list = [i.seed[0] for i in storyboard_params if i is not None]
 
     sb_prompt = StoryBoardPrompt(sb_prompts,
                                  my_ren_p.seconds,
                                  False
                                  )
     sb_seeds = StoryBoardSeed(sb_seeds_list,
-                              [0,my_ren_p.seconds * .5,
+                              [0, my_ren_p.seconds * .5,
                                my_ren_p.seconds]
                               )
 
@@ -409,15 +411,6 @@ def compose_storyboard_render_dev(my_ren_p, storyboard_params, ui_params, sb_ren
     :param sb_rend_func: the render function to use for rendering the SBMultiSampleArgs
     :param test: if true, then the function will perform a quick test render
     :param early_stop: if not -1, then the function will stop after this many seconds
-
-    Doctest not working due to import issues
-
-    >>> test_ui_params = ["test","nude",7,3,4,5,6,7,8,9,10,11,12,7.5]
-    >>> import importlib
-    >>> importlib.
-    >>> from modules.storysquad_storyboard.sb_sd_render import storyboard_call_endpoint
-    >>> compose_storyboard_render_dev(DefaultRender(),None,test_ui_params ,storyboard_call_endpoint ,test=True)
-    >>>
     """
     start_time = time.time()
     my_ren_p.width = ui_params[4]
@@ -487,3 +480,84 @@ def process_aync_results(all_imgs_by_seconds, audio_f_path, my_ren_p, start_time
     end_time = time.time()
     logger.info(f"total time: {end_time - start_time}")
     return target_mp4_f_path
+
+
+if __name__ == "__main__":
+    """this is the cli entry point, which also allows for testing."""
+    choice = input("mode:\n\t(q)uick test\n\t(s)hort test\n\t(5)0\n\t(r)eal usage\n\t(e)xit\n")
+    if choice == "q":  # quick test
+        from modules.storysquad_storyboard.testing import get_test_storyboard
+
+        test_sb = get_test_storyboard()
+        storyboard_params = test_sb
+        test_prompt = False
+
+        test_ui_params = ["doggy dog dogg", "nude", 7, 3, 512, 512, 6, 7, 8, 9, 10, 11, 12,
+                          7.5]  # only used if test is False
+
+    elif choice == "s":  # short test
+        raise NotImplementedError
+
+    elif choice == "5":  # long test
+        import modules.storysquad_storyboard.constants as sb_constants
+        from modules.storysquad_storyboard.testing import get_test_storyboard
+        print("using quick 50")
+        test_prompt = False
+        storyboard_params = [sb_constants.fifty_word_story1,
+                             sb_constants.fifty_word_story2,
+                             sb_constants.fifty_word_story3]
+
+        speach = " ".join([i for i in storyboard_params[0] if not i.isdigit()])
+        sbp_out = get_test_storyboard(storyboard_params)
+
+        storyboard_params = sbp_out
+
+        # remove all numbers from the prompt
+
+
+
+        test_ui_params = [speach, "", 7, 3, 512, 512, 6, 7, 8, 9, 10, 11, 12, 7.5]  # only used if test is False
+
+
+    server_choice = input("server:\n\t(m)ock\n\t(l)ocal\n\t(r)eal\n")
+
+    if server_choice == "m":  # use the mock server controller to test
+        import modules.storysquad_storyboard.env as sb_env
+
+        sb_env.STORYBOARD_PRODUCT = "soloui"
+        sb_env.STORYBOARD_SERVER_CONTROLLER_URL = "http://127.0.0.1:5000"
+        sb_env.STORYBOARD_USE_AWS = True
+        sb_env.STORYBOARD_API_ROLE = "ui_only"
+
+    elif server_choice == "r":  # use the real server controllor to test
+        import modules.storysquad_storyboard.env as sb_env
+
+        print(
+            f"using real server controller, press control-c now to interrupt. {sb_env.STORYBOARD_SERVER_CONTROLLER_URL}")
+        time.sleep(5)
+        sb_env.STORYBOARD_PRODUCT = "soloui"
+        # sb_env.STORYBOARD_SERVER_CONTROLLER_URL = "http://
+        sb_env.STORYBOARD_USE_AWS = True
+        sb_env.STORYBOARD_API_ROLE = "ui_only"
+
+    elif server_choice == "l":  # use the local server controllor to test
+        import modules.storysquad_storyboard.env as sb_env
+
+        sb_env.STORYBOARD_PRODUCT = "soloui"
+        sb_env.STORYBOARD_USE_AWS = False
+        sb_env.STORYBOARD_API_ROLE = "ui_only"
+        sb_env.STORYBOARD_RENDER_SERVER_URLS = ["http://127.0.0.1:7861/sdapi/v1/txt2img"]
+
+    from modules.storysquad_storyboard.sb_sd_render import storyboard_call_endpoint, shutdown_all_render_servers
+
+    render_params = DefaultRender()  # only used if test is False
+    render_params.fps = 30  # only used if test is False
+    render_params.batch_size = 30  # only used if test is False
+
+    compose_storyboard_render_dev(render_params,
+                                  storyboard_params,
+                                  test_ui_params,
+                                  storyboard_call_endpoint,
+                                  test=test_prompt
+                                  )
+    asyncio.run(shutdown_all_render_servers())

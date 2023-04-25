@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import copy
 import doctest
 import random
 from typing import Any, List
@@ -11,18 +12,19 @@ import requests
 import json
 from modules.storysquad_storyboard import env
 from modules.storysquad_storyboard.sb_rendering import SBMultiSampleArgs, SBImageResults, SBIRenderParams, \
-    SBIHyperParams
+    SBIHyperParams, CommonMembers
 
 from interface.sb_render_interface import SBRenderInterface
 
 wrap_around = 0
-AWS_SERVER_IPS = None
+AWS_SERVER_IP_PORTS = None
 SBRI: SBRenderInterface = None
 
 
 def get_fixed_seed(seed):
     import time
     # setup the random number generator correctly using time and the seed
+
     random.seed(time.time() + seed)
 
     if seed is None or seed == '' or seed == -1:
@@ -32,11 +34,11 @@ def get_fixed_seed(seed):
 
 
 async def setup_render_servers():
-    global x, AWS_SERVER_IPS, SBRI
+    global x, AWS_SERVER_IP_PORTS, SBRI
 
     if env.STORYBOARD_USE_AWS:
 
-        sbri_url = os.environ.get('STORYBOARD_SERVER_CONTROLLER_URL')
+        sbri_url = env.STORYBOARD_SERVER_CONTROLLER_URL
         sbri_user = os.environ.get('STORYBOARD_USER_NAME')
         sbri_pass = os.environ.get('STORYBOARD_PASSWORD')
         SBRI = SBRenderInterface(sb_controller_url=sbri_url,
@@ -44,7 +46,7 @@ async def setup_render_servers():
                                  sb_controller_pass=sbri_pass,
                                  )
 
-        AWS_SERVER_IPS = None
+        AWS_SERVER_IP_PORTS = None
         render_server_urls = None
 
         if render_server_urls is None:
@@ -52,11 +54,18 @@ async def setup_render_servers():
             if SBRI.server_ips and len(SBRI.server_ips) == len(SBRI.iids):
                 pass
             else:
-                AWS_SERVER_IPS = await SBRI.start_all_render_servers_and_apis(verbose=True)
+                AWS_SERVER_IP_PORTS = await SBRI.start_all_render_servers_and_apis(verbose=True)
 
-        render_server_urls = \
-            [f"http://{x}:7860/sdapi/v1/txt2img" for x in AWS_SERVER_IPS]
+        print(f"AWS IPS: {AWS_SERVER_IP_PORTS}")
+        out_urls = []
+        for ip in AWS_SERVER_IP_PORTS:
+            if not ":" in ip:
+                out_urls.append(f"http://{ip}:7860/sdapi/v1/txt2img")
+            else:
+                out_urls.append(f"http://{ip}/sdapi/v1/txt2img")
 
+        print(f"urls to use: {out_urls}")
+        render_server_urls = out_urls
         env.STORYBOARD_RENDER_SERVER_URLS.clear()
         env.STORYBOARD_RENDER_SERVER_URLS.extend(render_server_urls)
 
@@ -98,6 +107,8 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
         if len(negative_prompt) != len(prompt):
             if len(negative_prompt) == 1:
                 negative_prompt = negative_prompt * len(prompt)
+            else:
+                negative_prompt = negative_prompt[:len(prompt)]
 
     else:
         batch_size = 1
@@ -106,7 +117,7 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
     sampler_name = sb_iparams.render.sampler_name
 
     # convert the render params to the StableDiffusionProcessingTxt2Img params
-    if "StableDiffusionProcessingTxt2Img"  in globals():
+    if "StableDiffusionProcessingTxt2Img" in globals():
         tmp = StableDiffusionProcessingTxt2Img(
             sd_model=shared.sd_model,
             outpath_samples=opts.outdir_samples or opts.outdir_txt2img_samples,
@@ -129,20 +140,19 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
             seed_enable_extras=True
         )
     else:
-        shared = lambda: None
-        shared.sd_model = None
-        opts = lambda: None
-        opts.outdir_samples = None
-        opts.outdir_grids = None
-        opts.outdir_txt2img_samples = None
-        opts.outdir_txt2img_grids = None
-
+        f_shared = lambda: None
+        f_shared.sd_model = None
+        f_opts = lambda: None
+        f_opts.outdir_samples = None
+        f_opts.outdir_grids = None
+        f_opts.outdir_txt2img_samples = None
+        f_opts.outdir_txt2img_grids = None
 
         # likely doing a test so just return a dummy object
         tmp = lambda: None
-        tmp.sd_model = shared.sd_model
-        tmp.outpath_samples = opts.outdir_samples or opts.outdir_txt2img_samples
-        tmp.outpath_grids = opts.outdir_grids or opts.outdir_txt2img_grids
+        tmp.sd_model = f_shared.sd_model
+        tmp.outpath_samples = f_opts.outdir_samples or f_opts.outdir_txt2img_samples
+        tmp.outpath_grids = f_opts.outdir_grids or f_opts.outdir_txt2img_grids
         tmp.prompt = [prompt] if isinstance(prompt, str) else prompt
         tmp.styles = ["None", "None"]
         tmp.negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
@@ -211,19 +221,34 @@ async def storyboard_call_endpoint(params: SBMultiSampleArgs, *args, **kwargs) -
     Call the render server endpoint to render the images. The servers are chosen in a round-robin fashion.
     """
     if env.STORYBOARD_API_ROLE == "ui_only":
-        if not AWS_SERVER_IPS:
+        if not AWS_SERVER_IP_PORTS:
             await setup_render_servers()
-
     server_url = get_next_server_url()
-    p = get_sd_txt_2_image_params_from_story_board_params(params)
+    p = get_sd_txt_2_image_params_from_story_board_params(copy.deepcopy(params))
     # p.scripts = modules.scripts.scripts_txt2img
     set_random_seeds(p)
     p.do_not_save_samples = True
     processed = await call_json_api_endpoint_async(url=server_url, data=p)
-    images = processed["images"]
-    generation_info_js = processed["parameters"]
-    sb_results = create_sb_image_results(images, generation_info_js)
-    return sb_results
+    try:
+        images = processed["images"]
+        generation_info_js = processed["parameters"]
+        sb_results = create_sb_image_results(images, generation_info_js)
+        return sb_results
+    except KeyError as e:
+        print("received invalid response from server: ", e)
+        if images:
+            print("this is likely due to a server error.. or possibly testing locally, continuing...")
+
+            sb_results = create_sb_image_results(images, None)
+            # sb_results.images = images
+            sb_results.all_images = images
+
+            return sb_results
+
+    except Exception as e:
+        print("received invalid response from server: ", e)
+        print("retrying...")
+        return await storyboard_call_endpoint(params, *args, **kwargs)
 
 
 async def storyboard_call_endpoint_split_batch(params: SBMultiSampleArgs, batch_size: int, *args,
@@ -234,7 +259,7 @@ async def storyboard_call_endpoint_split_batch(params: SBMultiSampleArgs, batch_
     import time
     import copy
     if env.STORYBOARD_API_ROLE == "ui_only":
-        if not AWS_SERVER_IPS:
+        if not AWS_SERVER_IP_PORTS:
             await setup_render_servers()
     start_time = time.time()
     all_images = []
@@ -270,10 +295,12 @@ def set_random_seeds(params) -> None:
     """
     Turn all -1 seeds in the given parameters to random values.
     """
-
+    import time
     for i, seed in enumerate(params.seed):
         if seed == -1:
-            params.seed[i] = get_fixed_seed(-1)
+            random.seed(time.time() + seed + i)
+            s = int(random.randrange(4294967294))
+            params.seed[i] = s
 
 
 def create_sb_image_results(images: List[bytes], generation_info_js: dict) -> SBImageResults:
@@ -283,8 +310,12 @@ def create_sb_image_results(images: List[bytes], generation_info_js: dict) -> SB
     if "shared" in globals():
         if hasattr(shared, "total_tqdm"):
             shared.total_tqdm.clear()
+    if generation_info_js:
+        try:
+            generation_info_js["images"] = images
+        except Exception as e:
+            print(e)
 
-    generation_info_js["images"] = images
     # if opts.do_not_show_images:
     #       images = []
     return SBImageResults(api_results=generation_info_js)
@@ -324,10 +355,20 @@ async def call_json_api_endpoint_async(url: str, data: Any) -> dict:
 
     timeout = httpx.Timeout(300.0)  # Set the read timeout to 5 minutes
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        res = await client.post(url=url,
-                                data=json.dumps(data),
-                                headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            res = await client.post(url=url,
+                                    data=json.dumps(data),
+                                    headers=headers)
+    except httpx.TimeoutException:
+        print("Timeout")
+        return None
+    except httpx.ConnectError:
+        print("servers possibly timed out or are not running")
+        print("attempting to restart servers")
+        await setup_render_servers()
+        return None
+
     if res.status_code != 200:
         print(f"Error: {res.status_code}")
         print(res.text)
@@ -335,6 +376,7 @@ async def call_json_api_endpoint_async(url: str, data: Any) -> dict:
     rj = res.json()
     rj["images"] = [decode_base64_to_image(i) for i in rj["images"]]
     return rj
+
 
 def do_cli_tests():
     # requires StoryBoardAPI server running locallay on port 7860
@@ -386,13 +428,13 @@ def do_cli_tests():
     test_SBMSA = SBMultiSampleArgs(render=test_render_params, hyper=test_hyper_params)
     print(f"Doing Tests")
 
-
     async def test(SBMSA=test_SBMSA):
         import time
         # this is how storyboard calls this module
         start_time = time.time()
         # this is for a single batch that is to be rendered in a single async call
-        result.append(await storyboard_call_endpoint(SBMSA))
+        res = await storyboard_call_endpoint(SBMSA)
+        result.append(res)
         end_time = time.time()
         print(f"call endpoint Total time: {end_time - start_time}")
 
@@ -402,7 +444,8 @@ def do_cli_tests():
         end_time = time.time()
         print(f"split batch Total time: {end_time - start_time}")
 
-
+    if input("would you like to use the mock server controller? (y/n)") == "y":
+        env.STORYBOARD_SERVER_CONTROLLER_URL = "http://127.0.0.1:5000"
     if input("would you like to proceed with an local render render test? (y/n)") == "y":
         result = []
         asyncio.run(test())
@@ -443,7 +486,6 @@ def do_cli_tests():
         # this is how we tell this module to use the SB renderer interface
         env.STORYBOARD_USE_AWS = True
 
-
         # crude simulation of the main loop
         async def main_loop():
             print(f'calling setup_render_servers')
@@ -458,7 +500,6 @@ def do_cli_tests():
             await SBRI.stop_all_render_servers()
             print(f'stopping render servers done')
 
-
         asyncio.run(main_loop())
         print(result)
         print(f"expecting 9 images, got {len(result[0].all_images)}")
@@ -469,15 +510,26 @@ def do_cli_tests():
             for r in result:
                 for i in r.all_images:
                     i.show()
+        else:
+            print(f"showing first pair to compare")
+            result[0].all_images[0].show()
+            result[1].all_images[0].show()
 
-        result[0].all_images[0].show()
-        result[1].all_images[0].show()
+
+async def shutdown_all_render_servers():
+    """
+    shuts down all render servers
+    """
+    if SBRI:
+        await SBRI.stop_all_render_servers()
 
 
 if __name__ != "__main__" and env.STORYBOARD_PRODUCT == "soloui":
-    # we are in solo mode, so we need to not import anything automatic1111 gradio
-    pass
+    # we are in solo mode, so we need to not import anything automatic1111-webui
+    tmp = lambda: asyncio.run(setup_render_servers())
+    tmp()
 elif __name__ == "__main__" and env.STORYBOARD_PRODUCT != "soloui":
+    # non gradio testing mode
     do_cli_tests()
 else:
     # these are down here so that the doctests can run without importing the rest of the modules
@@ -488,6 +540,8 @@ else:
     from modules.shared import opts, cmd_opts
     from modules.api.models import StableDiffusionTxt2ImgProcessingAPI, StableDiffusionProcessingTxt2Img
 
+    tmp = lambda: asyncio.run(setup_render_servers())
+    tmp()
     wrap_around = 0
     # add an asyncio task
     # asyncio.create_task(setup_render_servers())

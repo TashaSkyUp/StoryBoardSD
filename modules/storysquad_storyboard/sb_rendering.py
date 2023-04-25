@@ -1,19 +1,22 @@
+from typing import List, Any, Optional
 import copy
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 import PIL
+import gtts
 import numpy
 from PIL import Image
 
 from modules.storysquad_storyboard.env import *
+import modules.storysquad_storyboard.env as sb_env
 from modules.storysquad_storyboard.storyboard import SBIHyperParams, get_prompt_words_and_weights_list, \
     get_frame_seed_data
 from modules.storysquad_storyboard.constants import *
 
 GTTS_SAMPLE_RATE = 24000.0
-MAX_BATCH_SIZE = 32
+MAX_BATCH_SIZE = sb_env.STORYBOARD_MAX_BATCH_SIZE
 NUM_SB_IMAGES = 30
 
 
@@ -286,7 +289,8 @@ def rfind_list(text, to_find: list):
                 return finds[-1]
 
         else:
-            return finds[-1]
+            ret = finds[-1]
+            return ret
 
     return finds[-1]
 
@@ -294,23 +298,18 @@ def rfind_list(text, to_find: list):
 def get_samples_from_gtts(text_to_read, slow=False) -> (numpy.ndarray, float):
     """
     >>> get_samples_from_gtts(long_story_test_prompt)
+    ... result_file=write_mp3(out, 44100,44100)
     """
-    # TODO: this needs paraellization see https://gtts.readthedocs.io/en/latest/tokenizer.html#minimizing
-    # 100 characters per request
-    punctuations = '''!()[]{};:\<>./?@#$%^&*_~\n'''
+    # TODO: this needs paraellization
+    punctuations = '''!()[]{};:\\<>./?@#$%^&*_~\n'''
     punc = list(punctuations)
     punc.append("   ")
 
     # slice up the text_to_read into 100 character chunks or smaller than shrink them to the nearest punctuation
-    cur_idx = 0
-    sections = []
-    while cur_idx < len(text_to_read):
-        last_punc = rfind_list(text_to_read[cur_idx:cur_idx + 100], punc)
-        section = text_to_read[cur_idx:cur_idx + last_punc]
-        sections.append(section)
-        cur_idx += last_punc
-
     from gtts import gTTS
+
+    sections = gtts.gTTS(text_to_read, lang="en", slow=slow)._tokenize(text_to_read)
+
     from pedalboard.io import AudioFile
     import moviepy.editor as mpy
     import os
@@ -318,14 +317,15 @@ def get_samples_from_gtts(text_to_read, slow=False) -> (numpy.ndarray, float):
     aud_length_secs = 0
     out = []
     for section in sections:
-        tmp_mp3_full_path = os.path.join(STORYBOARD_TMP_PATH, "tmp.mp3")
-        tmp_wav_full_path = os.path.join(STORYBOARD_TMP_PATH, "tmp.wav")
-        audio = gTTS(
-            text=section,
-            lang="en",
-            slow=slow,
-        )
-        if section != " ":
+        if section != " " and section != "":
+            tmp_mp3_full_path = os.path.join(STORYBOARD_TMP_PATH, "tmp.mp3")
+            tmp_wav_full_path = os.path.join(STORYBOARD_TMP_PATH, "tmp.wav")
+            audio = gTTS(
+                text=section,
+                lang="en",
+                slow=slow,
+            )
+
             audio.save(tmp_mp3_full_path)
 
             mpy.AudioFileClip(tmp_mp3_full_path).write_audiofile(tmp_wav_full_path)
@@ -768,8 +768,7 @@ def batched_selective_renderer(SBIMultiArgs, SBIMA_render_func, rparam: DefaultR
         difference = np.mean(np.square(imga - imgb))
         all_results[i + 1] = (i + 1, difference, all_results[i + 1])
 
-
-    #all_results[-1] = SBIMultiArgs[i]
+    # all_results[-1] = SBIMultiArgs[i]
 
     if isinstance(all_results[-1], SBMultiSampleArgs):
         all_results[-1] = (len(all_results) - 1, 1, all_results[-1])
@@ -875,7 +874,7 @@ class SBMultiSampleArgs:
 
     @property
     def hyper(self):
-        if self._length == 1 :
+        if self._length == 1:
             # if there is only one hyper param, return it
             return self._hyper[0]
         else:
@@ -902,12 +901,36 @@ class SBMultiSampleArgs:
         return tmp
 
 
-class SBImageResults:
+@dataclass
+class CommonMembers:
+    batch_size: int = 1
+    processed: Optional[Any] = None
+    all_images: List = field(default_factory=list)
+    all_prompts: List = field(default_factory=list)
+    all_seeds: List = field(default_factory=list)
+    all_subseeds: List = field(default_factory=list)
+    all_negative_prompts: List = field(default_factory=list)
+    all_steps: List = field(default_factory=lambda: [0])
+    all_subseed_strengths: List = field(default_factory=lambda: [0.0])
+    all_cfg_scales: List = field(default_factory=lambda: [0.0])
+    cfg_scale: float = 0.0
+    height: int = 256
+    width: int = 256
+    negative_prompt: str = ""
+    sampler_name: str = "default_sampler"
+    steps: int = 0
+    sb_iparams: Optional[Any] = None
+    img_hyper_params_list: List = field(default_factory=list)
+    all_as_stb_image_params: List = field(default_factory=list)
+
+
+class SBImageResults(CommonMembers):
     """
     This class is used to hold the results of a render provided in/by the modules.processing.Processed class
     """
 
     def __init__(self, processed=None, api_results=None):
+        super().__init__()
         if processed is not None:
             self.batch_size = processed.batch_size
             self.processed = processed
@@ -948,15 +971,15 @@ class SBImageResults:
             # these need to be adapted to be changable inter-batch if possible
             self.all_negative_prompts = [api_results['negative_prompt']] * api_results['batch_size']
             self.all_steps = [api_results['steps']] * api_results['batch_size']
-            self.all_subseed_strengths = [api_results['subseed_strength']]  * api_results['batch_size']
+            self.all_subseed_strengths = [api_results['subseed_strength']] * api_results['batch_size']
             self.all_cfg_scales = [api_results['cfg_scale']] * api_results['batch_size']
 
             self.batch_size = api_results['batch_size']
             self.cfg_scale = api_results['cfg_scale']
-            #self.clip_skip = api_results['clip_skip']
+            # self.clip_skip = api_results['clip_skip']
             self.height = api_results['height']
             self.width = api_results['width']
-            #self.job_timestamp = api_results['job_timestamp']
+            # self.job_timestamp = api_results['job_timestamp']
             self.negative_prompt = api_results['negative_prompt']
             self.sampler_name = api_results['sampler_name']
             self.steps = api_results['steps']
@@ -986,7 +1009,7 @@ class SBImageResults:
 
         tmp_list_of_st_sq_render_params = [SBIRenderParams(width=self.width,
                                                            height=self.height,
-                                                           #restore_faces=self.restore_faces,
+                                                           # restore_faces=self.restore_faces,
                                                            # tiling does not make it to through the conversion to "procesed"
                                                            # tiling=processed.extra_generation_params[""],
                                                            tiling=None,
@@ -1021,7 +1044,6 @@ class SBImageResults:
 
                 self.__dict__[key] = my_value + other_value
 
-
             return self
         else:
             print("Cannot add SBImageResults to non SBImageResults")
@@ -1051,7 +1073,7 @@ class SBImageResults:
 
         t_render = SBIRenderParams(width=self.width,
                                    height=self.height,
-                                   #restore_faces=self.,
+                                   # restore_faces=self.,
                                    # TODO: figure out where to get this from
                                    tiling=False,
                                    # TODO: check if the Processed class is just for one batch always
@@ -1145,7 +1167,7 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
     base_Hyper = copy.deepcopy(base_SBIMulti.hyper)
     # turn the list of prompts and seeds into a list of CallArgsAsData using the base_params as a template
     # populate the storyboard_call_multi with the prompts and seeds
-    out_hyper =  SBIHyperParams()
+    out_hyper = SBIHyperParams()
     for prompt, seed in zip(prompts, seeds):
         out_hyper += SBIHyperParams(
             prompt=prompt,
@@ -1156,7 +1178,7 @@ def compose_storyboard_render(my_render_params, all_state, early_stop, storyboar
             steps=base_Hyper.steps,
             cfg_scale=base_Hyper.cfg_scale,
         )
-    out_SBM= SBMultiSampleArgs(hyper=out_hyper, render=base_SBIMulti.render)
+    out_SBM = SBMultiSampleArgs(hyper=out_hyper, render=base_SBIMulti.render)
     images_to_save = batched_selective_renderer(out_SBM,
                                                 rparam=my_render_params,
                                                 early_stop=early_stop,

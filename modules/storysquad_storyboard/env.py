@@ -6,6 +6,9 @@ def get_this_files_path():
     return os.path.dirname(os.path.realpath(__file__))
 
 
+# MAX_BATCH_SUZE
+STORYBOARD_SERVER_CONTROLLER_URL = os.getenv("STORYBOARD_SERVER_CONTROLLER_URL", None)
+STORYBOARD_MAX_BATCH_SIZE = int(os.getenv("STORYBOARD_MAX_BATCH_SIZE", 9))
 STORYBOARD_USE_AWS = os.getenv("STORYBOARD_USE_AWS", False) == "True"
 STORYBOARD_API_MODEL_PATH = os.getenv("STORYBOARD_API_MODEL_PATH", "model.ckpt")
 STORYBOARD_RENDER_SERVER_URLS = \

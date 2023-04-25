@@ -2,6 +2,7 @@ from modules.storysquad_storyboard.branched_renderer import compose_storyboard_r
 MAX_SB_SIZE = 3
 print(__name__)
 from modules.storysquad_storyboard.sb_rendering import *
+from modules.storysquad_storyboard.testing import get_test_storyboard
 import gradio.components
 import json
 from dataclasses import dataclass
@@ -153,22 +154,8 @@ def get_files_at_path(path=None) -> List[str]:
                   if os.path.isfile(os.path.join(path, f))]
     root_files.sort(key=os.path.getmtime, reverse=True)
     return root_files
-def get_test_storyboard():
-    test_data = [
-        "(dog:1) cat:0",
-        "(dog:1) cat:1",
-        "(dog:0) cat:1",
-    ]
-    storyboard_params = [SBIHyperParams(
-        prompt=prompt,
-        seed=i,
-        negative_prompt="",
-        cfg_scale=7,
-        steps=5,
-        subseed=-1,
-        subseed_strength=0.0,
-    ) for i, prompt in enumerate(test_data)]
-    return storyboard_params
+
+
 
 
 

@@ -97,6 +97,8 @@ class SBIHyperParams:
                 _prompt = kwargs["_prompt"]
             else:
                 raise ValueError("prompt is required")
+        elif isinstance(prompt, str):
+            _prompt = [prompt]
         else:
             _prompt = prompt
 
@@ -107,6 +109,25 @@ class SBIHyperParams:
         self.subseed = self._make_list(subseed)
         self.subseed_strength = self._make_list(subseed_strength)
         self.cfg_scale = self._make_list(cfg_scale)
+
+        self._ensure_same_length_lists()
+
+    def _ensure_same_length_lists(self):
+        target_length = len(self._prompt)
+
+        self.negative_prompt = self._resize_list(self.negative_prompt, target_length)
+        #self.steps = self._resize_list(self.steps, target_length)
+        self.seed = self._resize_list(self.seed, target_length)
+        self.subseed = self._resize_list(self.subseed, target_length)
+        self.subseed_strength = self._resize_list(self.subseed_strength, target_length)
+        #self.cfg_scale = self._resize_list(self.cfg_scale, target_length)
+
+    @staticmethod
+    def _resize_list(lst, target_length):
+        if len(lst) < target_length:
+            return lst * (target_length // len(lst)) + lst[:target_length % len(lst)]
+        else:
+            return lst[:target_length]
 
     def __getitem__(self, item):
         ret = SBIHyperParams(prompt=self._prompt[item], negative_prompt=self.negative_prompt[item],
@@ -628,7 +649,7 @@ class StoryBoardPrompt:
 
         if seconds < 0:
             raise ValueError("seconds cannot be less than 0")
-        if seconds > (self.total_seconds+self.start_time):
+        if (seconds-3.552713678800501e-14) > (self.total_seconds+self.start_time):
             raise ValueError("seconds cannot be greater than the total time of the storyboard")
 
         # find the section that the seconds is in using self._times_sections_start
@@ -693,6 +714,11 @@ class StoryBoardSeed:
 
     class InteropSeed(Interpolatable):
         def __init__(self, seed_x, seed_y, progress, interfunc=None):
+            if isinstance(seed_x, list):
+                seed_x = seed_x[0]
+            if isinstance(seed_y, list):
+                seed_y = seed_y[0]
+
             if progress > 1 or progress < 0:
                 raise ValueError(f"progress must be between 0 and 1; got: {progress}")
 
@@ -714,10 +740,16 @@ class StoryBoardSeed:
                 return self.x <= item.x <= self.y and self.x <= item.y <= self.y
 
             elif isinstance(item, (float,int)):
-                return self.x <= item <= self.y
+                diff_y = abs(item - self.y)
+                diff_x = abs(item - self.x)
+                # floating point rounding errors
+                if diff_x < 1e-10 or diff_y < 1e-10:
+                    return True
+                ret = self.x <= item <= self.y
+                return ret
 
             else:
-                raise ValueError(f"TimeSection.__contains__ only supports Interpolatable and float; got: {type(item)}")
+                raise ValueError(f"TimeSection.__contains__ only supports Interpolatable float, and int; got: {type(item)}")
 
         def __repr__(self):
             return f"TimeSection({self.x}, {self.y})"

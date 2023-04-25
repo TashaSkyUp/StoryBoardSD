@@ -814,12 +814,30 @@ short_story_sb_prompt3 = "(Once:0.5374819817998283) (upon:0.7613739065522899) (a
                          "back:0.897779412036581) (home.:0.6827491583091284) "
 short_story_test_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover"
 
-small_quick_test_prompt_base = "(The:) (quick:) (brown:) (fox:) (jumps:) (over:) (the:) (lazy:) (dog:)"
-small_quick_test_prompt1 = " ".join([w.replace(':',":"+str((i/9))) for i,w in enumerate(small_quick_test_prompt_base.split(" "))])
-small_quick_test_prompt2 = " ".join([w.replace(':',":"+str(0.5)) for i,w in enumerate(small_quick_test_prompt_base.split(" "))])
-small_quick_test_prompt3 = " ".join([w.replace(':',":"+str(1-(i/9))) for i,w in enumerate(small_quick_test_prompt_base.split(" "))])
-small_quick_test_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover amateure plain " \
+random_small_quick_test_prompt_base = "(The:) (quick:) (brown:) (fox:) (jumps:) (over:) (the:) (lazy:) (dog:)"
+random_small_quick_test_prompt1 = " ".join([w.replace(':', ":" + str((i / 9))) for i, w in enumerate(random_small_quick_test_prompt_base.split(" "))])
+random_small_quick_test_prompt2 = " ".join([w.replace(':', ":" + str(0.5)) for i, w in enumerate(random_small_quick_test_prompt_base.split(" "))])
+random_small_quick_test_prompt3 = " ".join([w.replace(':', ":" + str(1 - (i / 9))) for i, w in enumerate(random_small_quick_test_prompt_base.split(" "))])
+random_small_quick_test_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover amateure plain " \
                               "boring "
+
+# a nice 50 word story
+fifty_word_story1 = "Once upon a time, there was a village that was plagued by a (fearsome dragon:1.5). Every day, the (dragon:1.5) " \
+                   "would terrorize the villagers by demanding a (virgin:1.5) to eat. The villagers lived in fear of the " \
+                   "dragon and were afraid to leave their homes. Until one day when they had enough. They decided to " \
+                   "fight back, the rest is history."
+
+fifty_word_story2 = "Once upon a time, there was a village that was plagued by a fearsome dragon. Every day, the dragon " \
+                   "would terrorize the villagers by demanding a virgin to eat. The (villagers:1.5) lived in fear of the " \
+                   "dragon and were afraid to leave their homes. Until one day when they had enough. They decided to " \
+                   "fight back, the rest is history."
+
+fifty_word_story3 = "Once upon a time, there was a village that was plagued by a fearsome dragon. Every day, the dragon " \
+                   "would terrorize the villagers by demanding a virgin to eat. The (villagers:1.5) lived in fear of the " \
+                   "dragon and were afraid to leave their homes. Until one day when they had enough. They decided to " \
+                   "(fight:1.2) (back:1.2), the rest is history."
+
+fifty_word_story_neg_prompt = "confusing blurry mutant disfigured caption text movie poster book cover amateure plain"
 
 test_img_info = json.loads('{"parameters": "(A:1.0389916936335184) (robot:0.9737987777913438)\\nNegative prompt: '
                            'confusing amateur strange odd ugly mutant '
