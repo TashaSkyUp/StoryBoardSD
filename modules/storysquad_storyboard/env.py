@@ -1,4 +1,5 @@
 import os
+import yaml
 from imageio_ffmpeg import get_ffmpeg_exe
 
 
@@ -6,32 +7,27 @@ def get_this_files_path():
     return os.path.dirname(os.path.realpath(__file__))
 
 
-# MAX_BATCH_SUZE
-STORYBOARD_SERVER_CONTROLLER_URL = os.getenv("STORYBOARD_SERVER_CONTROLLER_URL", None)
-STORYBOARD_MAX_BATCH_SIZE = int(os.getenv("STORYBOARD_MAX_BATCH_SIZE", 9))
-STORYBOARD_USE_AWS = os.getenv("STORYBOARD_USE_AWS", False) == "True"
-STORYBOARD_API_MODEL_PATH = os.getenv("STORYBOARD_API_MODEL_PATH", "model.ckpt")
-STORYBOARD_RENDER_SERVER_URLS = \
-    os.getenv("STORYBOARD_RENDER_SERVER_URLS",
-              ["http://127.0.0.1:7861/sdapi/v1/txt2img",
-               # "http://127.0.0.1:7862/sdapi/v1/txt2img",
-               # "http://127.0.0.1:7863/sdapi/v1/txt2img",
-               # "http://127.0.0.1:7864/sdapi/v1/txt2img",
-               # "http://18.225.4.178:7860/sdapi/v1/txt2img", # AWS SBR 4
-               # "http://18.222.67.149:7860/sdapi/v1/txt2img", # AWS SBR 5
-               ])
-if isinstance(STORYBOARD_RENDER_SERVER_URLS, str):
-    STORYBOARD_RENDER_SERVER_URLS = [STORYBOARD_RENDER_SERVER_URLS]
-STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "app")
-# STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "sd_server")
-# STORYBOARD_API_ROLE = os.getenv("STORYBOARD_API_ROLE", "ui_only")
+def load_settings(filename):
+    with open(filename, "r") as f:
+        return yaml.safe_load(f)
 
-STORYBOARD_DEV_MODE = os.getenv("STORYBOARD_DEV_MODE") == "True"
-STORYBOARD_RENDER_PATH = os.getenv("STORYBOARD_RENDER_PATH", get_this_files_path())
+
+settings = load_settings("storyboard.yaml")
+
+STORYBOARD_SERVER_CONTROLLER_URL = settings["storyboard_server_controller_url"]
+STORYBOARD_MAX_BATCH_SIZE = settings["storyboard_max_batch_size"]
+STORYBOARD_USE_AWS = settings["storyboard_use_aws"]
+STORYBOARD_API_MODEL_PATH = settings["storyboard_api_model_path"]
+STORYBOARD_RENDER_SERVER_URLS = settings["storyboard_render_server_urls"]
+STORYBOARD_API_ROLE = settings["storyboard_api_role"]
+STORYBOARD_DEV_MODE = settings["storyboard_dev_mode"]
+STORYBOARD_RENDER_PATH = settings["storyboard_render_path"] or get_this_files_path()
+STORYBOARD_FFMPEG_PATH = settings["storyboard_ffmpeg_path"]
+STORYBOARD_PRODUCT = settings["storyboard_product"]
+
 if STORYBOARD_RENDER_PATH:
     STORYBOARD_TMP_PATH = os.path.join(STORYBOARD_RENDER_PATH, "tmp")
 
-STORYBOARD_FFMPEG_PATH = os.getenv("STORYBOARD_FFMPEG_PATH", "ERROR")
 if STORYBOARD_FFMPEG_PATH == "ERROR":
     try:
         fallback = get_ffmpeg_exe()
@@ -40,13 +36,13 @@ if STORYBOARD_FFMPEG_PATH == "ERROR":
     except:
         raise Exception("STORYBOARD_FFMPEG_PATH is not set\n fallback failed.")
 
-STORYBOARD_PRODUCT = os.getenv("STORYBOARD_PRODUCT", "expert")
-
 # create any paths that do not exist yet
 if not os.path.exists(STORYBOARD_RENDER_PATH):
     os.makedirs(STORYBOARD_RENDER_PATH)
 if not os.path.exists(STORYBOARD_TMP_PATH):
     os.makedirs(STORYBOARD_TMP_PATH)
+
+# The rest of the code remains the same
 
 
 def assure_os_perfect_path(os_path: str, override_os=None) -> str:

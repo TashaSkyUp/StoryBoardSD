@@ -162,7 +162,7 @@ def get_sd_txt_2_image_params_from_story_board_params(sb_iparams: SBMultiSampleA
         tmp.sampler_name = sampler_name if isinstance(sampler_name, str) else sampler_name[0]
         tmp.batch_size = batch_size
         tmp.n_iter = 1
-        tmp.steps = steps
+        tmp.steps = steps if isinstance(steps, int) else steps[0]
         tmp.cfg_scale = 7.0
         tmp.width = width
         tmp.height = height
